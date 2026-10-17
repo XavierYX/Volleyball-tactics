@@ -1,3 +1,4 @@
+import {templateSnapshot,makeShareLink,parseShareLink,importTemplate} from './sharing.js';
 import {ROLES,POSITIONS,clone,id,createState,startMatch,roleAt,displayedPlayer,scorePoint,undoPoint,correctMatch,checkFormation,substitute,returnStarter,endMatch,validateState,saveRoster} from './core.js';
 import {openStore,readState,writeState} from './storage.js';
 const $=id=>document.getElementById(id);
@@ -138,6 +139,74 @@ function renderSub(){
 $('substitute').onclick=()=>{renderSub();$('sub-dialog').showModal()};
 $('sub-form').onsubmit=e=>{e.preventDefault();try{substitute(state,+$('sub-role').value,$('sub-player').value);save();render();renderSub();toast('已换人，轮次和站位保持不变');}catch(err){$('sub-error').textContent=err.message}};
 $('help').onclick=()=>{finishEditing();$('help-dialog').showModal()};
+let shareRequest=0,importRequest=0,pendingTemplate=null;
+function clearShareHash(){
+  const url=new URL(location.href),params=new URLSearchParams(url.hash.slice(1));
+  if(params.has('pz')){params.delete('pz');url.hash=params.toString();history.replaceState(null,'',url.href);}
+}
+async function prepareShare(){
+  const request=++shareRequest;$('share-error').textContent='';$('share-link').value='正在生成链接…';$('copy-share').disabled=true;$('native-share').disabled=true;
+  try{
+    const source=$('share-source').value,snapshot=templateSnapshot(state,source);
+    $('share-summary').textContent=`${snapshot.players.length} 名队员 · 6 轮阵型`;
+    const link=await makeShareLink(state,location.href,source);
+    if(request!==shareRequest||!$('share-dialog').open)return;
+    $('share-link').value=link;$('copy-share').disabled=false;$('native-share').disabled=false;
+  }catch(err){if(request===shareRequest){$('share-link').value='';$('share-error').textContent=err.message;}}
+}
+function openShare(){
+  finishEditing();$('help-dialog').close();
+  selectOptions($('share-source'),[{value:'default',label:'默认阵型与首发'},...(state.match?[{value:'match',label:'本场阵型与当前队员'}]:[])],'default');
+  $('native-share').hidden=typeof navigator.share!=='function';
+  $('share-dialog').showModal();prepareShare();
+}
+function openImport(){finishEditing();$('help-dialog').close();$('import-error').textContent='';$('import-dialog').showModal();}
+$('open-share').onclick=openShare;$('open-import').onclick=openImport;$('share-source').onchange=prepareShare;
+$('copy-share').onclick=async()=>{
+  try{if(!navigator.clipboard?.writeText)throw Error('clipboard unavailable');await navigator.clipboard.writeText($('share-link').value);toast('分享链接已复制');}
+  catch{$('share-link').focus();$('share-link').select();toast('请长按链接选择复制');}
+};
+$('native-share').onclick=async()=>{
+  try{await navigator.share({title:'排阵 · 队员与六轮阵型',url:$('share-link').value});}
+  catch(err){if(err.name!=='AbortError')$('share-error').textContent='系统分享暂不可用，请点击“复制链接”。';}
+};
+async function previewImportLink(){
+  const request=++importRequest;$('import-error').textContent='';$('preview-import').disabled=true;$('preview-import').textContent='正在读取…';
+  try{
+    const incoming=await parseShareLink($('import-link').value);
+    if(request!==importRequest||!$('import-dialog').open)return;
+    pendingTemplate=incoming;
+    $('import-summary').textContent=`${incoming.players.length} 名队员 · 6 轮阵型`;
+    $('import-lineup').replaceChildren(...[...ROLES,'自由人'].map((role,i)=>{
+      const name=incoming.players.find(p=>p.id===incoming.lineup[i])?.name||'不使用';
+      return el('div',{class:'import-member'},el('b',{text:role}),el('span',{text:name}));
+    }));
+    $('apply-import').disabled=!!state.match;
+    $('import-preview-error').textContent=state.match?'请先退出当前比赛，再导入队员与阵型。':'';
+    $('import-dialog').close();clearShareHash();$('import-preview-dialog').showModal();
+  }catch(err){if(request===importRequest)$('import-error').textContent=err.message;}
+  finally{if(request===importRequest){$('preview-import').disabled=false;$('preview-import').textContent='预览队员与阵型';}}
+}
+$('preview-import').onclick=previewImportLink;
+$('import-dialog').addEventListener('close',()=>{importRequest++;$('preview-import').disabled=false;$('preview-import').textContent='预览队员与阵型';clearShareHash();});
+$('apply-import').onclick=async()=>{
+  if(!pendingTemplate)return;
+  try{
+    if(state.match)throw Error('请先退出当前比赛，再导入队员与阵型。');
+    if(storageBlocked){await openStore();storageBlocked=false;}
+    importTemplate(state,pendingTemplate);pendingTemplate=null;viewRound=0;mode='default';editing=false;
+    save();render();$('import-preview-dialog').close();toast('队员与六轮阵型已导入');
+  }catch(err){$('import-preview-error').textContent=err.message||'无法保存导入内容，请重试。';}
+};
+function receiveShareHash(){
+  if(!new URLSearchParams(location.hash.slice(1)).has('pz'))return;
+  if($('import-preview-dialog').open)$('import-preview-dialog').close();
+  if($('share-dialog').open)$('share-dialog').close();
+  $('import-link').value=location.href;
+  if(!$('import-dialog').open)openImport();
+  previewImportLink();
+}
+window.addEventListener('hashchange',receiveShareHash);
 $('backup').onclick=()=>{const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=el('a',{href:url,download:`排阵备份-${new Date().toISOString().slice(0,10)}.json`});document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);};
 $('restore').onclick=()=>$('restore-file').click();
 $('restore-file').onchange=async()=>{const file=$('restore-file').files[0];if(!file)return;try{if(file.size>5*1024*1024)throw Error('备份文件超过 5MB。');const incoming=validateState(JSON.parse(await file.text()));confirm('恢复将覆盖本机队员、默认站位和当前比赛。建议先导出已有数据备份。',async()=>{if(storageBlocked){try{await openStore();storageBlocked=false;}catch{showSaveError('恢复的数据暂存于内存，无法写入本机。请导出备份后重新打开。');}}state=clone(incoming);mode='match';viewRound=state.match?.round||0;editing=false;save();render();$('help-dialog').close();toast('备份已恢复');});$('backup-error').textContent='';}catch(err){$('backup-error').textContent='无法恢复：'+err.message}finally{$('restore-file').value=''}};
@@ -149,7 +218,7 @@ async function offlineSetup(){
     workerRegistration=await navigator.serviceWorker.register('./sw.js');
     const updateStatus=async()=>{const cached=(await caches.keys()).some(key=>key.startsWith('lunjian-'));$('offline-status').textContent=cached?(navigator.onLine?'离线已就绪 · 可添加到主屏幕':'当前离线 · 数据继续保存在本机'):'离线资源尚未缓存，请联网重新打开';};
     navigator.serviceWorker.ready.then(updateStatus);window.addEventListener('online',updateStatus);window.addEventListener('offline',updateStatus);
-    const waiting=()=>{$('apply-update').hidden=false;$('offline-status').textContent='新版本已就绪，退出比赛后可在“使用与备份”中更新。'};
+    const waiting=()=>{$('apply-update').hidden=false;$('offline-status').textContent='新版本已就绪，退出比赛后可在“分享与备份”中更新。'};
     if(workerRegistration.waiting)waiting();
     workerRegistration.addEventListener('updatefound',()=>{const worker=workerRegistration.installing;worker?.addEventListener('statechange',()=>{if(worker.state==='installed'&&navigator.serviceWorker.controller)waiting()});});
     $('apply-update').onclick=()=>{if(state.match){toast('请先退出比赛，再更新应用。');return}updateRequested=true;workerRegistration.waiting?.postMessage({type:'ACTIVATE'});};
@@ -158,4 +227,4 @@ async function offlineSetup(){
 }
 try{await openStore();const saved=await readState();state=saved?validateState(saved):createState();viewRound=state.match?.round||0;mode=state.match?'match':'default';$('save-status').textContent=saved?'已恢复本机数据':'已准备好';if(!saved)save();}
 catch{state=createState();storageBlocked=true;showSaveError('本机数据读取失败，未覆盖原数据。当前可临时使用，请导出备份；可尝试关闭其他页面再打开。');}
-render();offlineSetup();
+render();offlineSetup();receiveShareHash();
