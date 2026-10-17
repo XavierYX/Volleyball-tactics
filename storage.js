@@ -1,3 +1,4 @@
+// Keep the database name stable across branding changes so existing matches survive.
 const DB='lunjian-volleyball';
 let db;
 export async function openStore(){
