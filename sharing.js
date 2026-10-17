@@ -29,13 +29,13 @@ async function limitedRead(stream){
 /** The fragment carries a snapshot and is never sent in the page's HTTP request. */
 export async function makeShareLink(state,baseURL,source='default',{compress=true}={}){
   const template=templateSnapshot(state,source),raw=new TextEncoder().encode(JSON.stringify(pack(template)));
-  if(raw.length>MAX_BYTES)throw Error('名单过大，请使用文件备份。');
+  if(raw.length>MAX_BYTES)throw Error('名单过大，请缩短姓名或减少替补后重试。');
   let bytes=raw,format='j1';
   if(compress&&typeof CompressionStream==='function'){
     try{const zipped=await limitedRead(new Blob([raw]).stream().pipeThrough(new CompressionStream('deflate')));if(zipped.length<raw.length){bytes=zipped;format='z1';}}catch{/* Plain format remains available if compression is unavailable. */}
   }
   const url=new URL(baseURL);url.hash='';url.search='';url.hash='pz='+format+'.'+base64url(bytes);
-  if(url.href.length>MAX_LINK_LENGTH)throw Error('分享链接过长，请减少替补名单或使用文件备份。');
+  if(url.href.length>MAX_LINK_LENGTH)throw Error('分享链接过长，请缩短姓名或减少替补名单后重试。');
   return url.href;
 }
 export async function parseShareLink(value){

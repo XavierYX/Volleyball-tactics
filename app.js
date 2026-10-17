@@ -6,11 +6,11 @@ let state,viewRound=0,editing=false,mode='match',saveQueue=Promise.resolve(),rev
 function el(tag,props={},...children){const e=document.createElement(tag);for(const [k,v]of Object.entries(props)){if(k==='text')e.textContent=v;else if(k==='class')e.className=v;else e.setAttribute(k,v)}for(const c of children)e.append(c);return e}
 const playerName=pid=>state.players.find(p=>p.id===pid)?.name||'未安排';
 function toast(message){clearTimeout(toastTimer);$('toast').textContent=message;$('toast').hidden=false;toastTimer=setTimeout(()=>$('toast').hidden=true,2800)}
-function showSaveError(message){$('save-error').hidden=false;$('save-error').textContent=message;$('save-status').textContent='保存失败，请导出备份';}
+function showSaveError(message){$('save-error').hidden=false;$('save-error').textContent=message;$('save-status').textContent='保存失败，请复制分享链接';}
 function save(){
-  if(storageBlocked){showSaveError('无法访问原有本机数据，当前变更仅在内存中，请导出备份后重新打开。');return;}
+  if(storageBlocked){showSaveError('无法访问原有本机数据，当前变更仅在内存中，请复制分享链接保存名单与阵型后重新打开。');return;}
   const current=++revision,data=clone(state);$('save-status').textContent='正在保存…';
-  saveQueue=saveQueue.then(()=>writeState(data)).then(()=>{if(current===revision){$('save-error').hidden=true;$('save-status').textContent='已保存到本机';}}).catch(()=>showSaveError('本机保存失败，当前数据仍在页面中，请立即导出备份。'));
+  saveQueue=saveQueue.then(()=>writeState(data)).then(()=>{if(current===revision){$('save-error').hidden=true;$('save-status').textContent='已保存到本机';}}).catch(()=>showSaveError('本机保存失败，当前数据仍在页面中，请复制分享链接保存名单与阵型。'));
 }
 function active(){return state.match||{lineup:state.lineup,formations:state.formations,round:viewRound,score:[0,0],serving:false};}
 function formations(){return mode==='default'?state.formations:active().formations;}
@@ -145,19 +145,18 @@ function clearShareHash(){
   if(params.has('pz')){params.delete('pz');url.hash=params.toString();history.replaceState(null,'',url.href);}
 }
 async function prepareShare(){
-  const request=++shareRequest;$('share-error').textContent='';$('share-link').value='正在生成链接…';$('copy-share').disabled=true;$('native-share').disabled=true;
+  const request=++shareRequest;$('share-error').textContent='';$('share-link').value='正在生成链接…';$('copy-share').disabled=true;
   try{
     const source=$('share-source').value,snapshot=templateSnapshot(state,source);
     $('share-summary').textContent=`${snapshot.players.length} 名队员 · 6 轮阵型`;
     const link=await makeShareLink(state,location.href,source);
     if(request!==shareRequest||!$('share-dialog').open)return;
-    $('share-link').value=link;$('copy-share').disabled=false;$('native-share').disabled=false;
+    $('share-link').value=link;$('copy-share').disabled=false;
   }catch(err){if(request===shareRequest){$('share-link').value='';$('share-error').textContent=err.message;}}
 }
 function openShare(){
   finishEditing();$('help-dialog').close();
   selectOptions($('share-source'),[{value:'default',label:'默认阵型与首发'},...(state.match?[{value:'match',label:'本场阵型与当前队员'}]:[])],'default');
-  $('native-share').hidden=typeof navigator.share!=='function';
   $('share-dialog').showModal();prepareShare();
 }
 function openImport(){finishEditing();$('help-dialog').close();$('import-error').textContent='';$('import-dialog').showModal();}
@@ -165,10 +164,6 @@ $('open-share').onclick=openShare;$('open-import').onclick=openImport;$('share-s
 $('copy-share').onclick=async()=>{
   try{if(!navigator.clipboard?.writeText)throw Error('clipboard unavailable');await navigator.clipboard.writeText($('share-link').value);toast('分享链接已复制');}
   catch{$('share-link').focus();$('share-link').select();toast('请长按链接选择复制');}
-};
-$('native-share').onclick=async()=>{
-  try{await navigator.share({title:'排阵 · 队员与六轮阵型',url:$('share-link').value});}
-  catch(err){if(err.name!=='AbortError')$('share-error').textContent='系统分享暂不可用，请点击“复制链接”。';}
 };
 async function previewImportLink(){
   const request=++importRequest;$('import-error').textContent='';$('preview-import').disabled=true;$('preview-import').textContent='正在读取…';
@@ -207,9 +202,6 @@ function receiveShareHash(){
   previewImportLink();
 }
 window.addEventListener('hashchange',receiveShareHash);
-$('backup').onclick=()=>{const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=el('a',{href:url,download:`排阵备份-${new Date().toISOString().slice(0,10)}.json`});document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);};
-$('restore').onclick=()=>$('restore-file').click();
-$('restore-file').onchange=async()=>{const file=$('restore-file').files[0];if(!file)return;try{if(file.size>5*1024*1024)throw Error('备份文件超过 5MB。');const incoming=validateState(JSON.parse(await file.text()));confirm('恢复将覆盖本机队员、默认站位和当前比赛。建议先导出已有数据备份。',async()=>{if(storageBlocked){try{await openStore();storageBlocked=false;}catch{showSaveError('恢复的数据暂存于内存，无法写入本机。请导出备份后重新打开。');}}state=clone(incoming);mode='match';viewRound=state.match?.round||0;editing=false;save();render();$('help-dialog').close();toast('备份已恢复');});$('backup-error').textContent='';}catch(err){$('backup-error').textContent='无法恢复：'+err.message}finally{$('restore-file').value=''}};
 for(const b of document.querySelectorAll('[data-close]'))b.onclick=()=>b.closest('dialog').close();
 for(const d of document.querySelectorAll('dialog'))d.addEventListener('click',e=>{if(e.target!==d)return;const r=d.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)d.close();});
 async function offlineSetup(){
@@ -226,5 +218,5 @@ async function offlineSetup(){
   }catch{$('offline-status').textContent='离线缓存未完成，请联网重试；当前编辑仍可保存。';}
 }
 try{await openStore();const saved=await readState();state=saved?validateState(saved):createState();viewRound=state.match?.round||0;mode=state.match?'match':'default';$('save-status').textContent=saved?'已恢复本机数据':'已准备好';if(!saved)save();}
-catch{state=createState();storageBlocked=true;showSaveError('本机数据读取失败，未覆盖原数据。当前可临时使用，请导出备份；可尝试关闭其他页面再打开。');}
+catch{state=createState();storageBlocked=true;showSaveError('本机数据读取失败，未覆盖原数据。当前可临时使用，请复制分享链接保存名单与阵型；可尝试关闭其他页面再打开。');}
 render();offlineSetup();receiveShareHash();
