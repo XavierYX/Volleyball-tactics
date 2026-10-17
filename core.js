@@ -97,3 +97,12 @@ export function validateState(s) {
   }
   return s;
 }
+
+/** Save editable roster and pre-match roles; live substitutions remain independent. */
+export function saveRoster(state,players,lineup){
+  if(!state.match&&!validLineup(lineup,players))throw Error('首发角色不能重复，六个首发角色均需选择队员。');
+  const next={...state,players,lineup:state.match?state.lineup:lineup};
+  validateState(next);
+  state.players=clone(players);
+  if(!state.match)state.lineup=clone(lineup);
+}

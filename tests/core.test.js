@@ -15,3 +15,17 @@ test('exit can discard or overwrite all six formations; substitutes never persis
 test('backup roundtrip includes ongoing game, history and edited formations',()=>{const s=game();scorePoint(s.match,0);assert.deepEqual(validateState(JSON.parse(JSON.stringify(s))),s);});
 test('malformed backups are rejected without altering current state',()=>{for(const change of [s=>s.version=99,s=>s.formations=[],s=>s.lineup[1]=s.lineup[0],s=>s.match.score=[-1,0],s=>s.players[0].short='两个',s=>s.match.history=[{score:[0,0],round:9,serving:false}],s=>s.match.formations[0][1]=[NaN,2],s=>s.match.substitutions=[{}]]){const s=game(),bad=clone(s);change(bad);assert.throws(()=>validateState(bad));assert.equal(s.match.round,0);}});
 test('duplicate starting players and invalid score correction are rejected',()=>{const s=createState();assert.throws(()=>startMatch(s,{lineup:[s.lineup[0],...s.lineup.slice(0,6)],score:[0,0],round:0,serving:false,teams:['A','B']}));const m=game().match;assert.throws(()=>correctMatch(m,{score:[1.5,0],round:0,serving:false}));});
+
+test('pre-match roster role edits persist and are used by the next match',async()=>{
+  const {saveRoster}=await import('../core.js');const s=createState(),lineup=clone(s.lineup),formations=clone(s.formations);
+  [lineup[1],lineup[4]]=[lineup[4],lineup[1]];
+  saveRoster(s,s.players,lineup);assert.deepEqual(s.formations,formations);validateState(JSON.parse(JSON.stringify(s)));
+  startMatch(s,{lineup:s.lineup,score:[0,0],round:0,serving:false,teams:['A','B']});
+  assert.equal(displayedPlayer(s,s.match,2,0).player.id,lineup[1]);assert.equal(displayedPlayer(s,s.match,2,0).role,1);
+});
+test('duplicate role selection rejects atomically; roster editing during a match preserves both lineups',async()=>{
+  const {saveRoster}=await import('../core.js');const s=createState(),before=clone(s),bad=clone(s.lineup);bad[1]=bad[4];
+  assert.throws(()=>saveRoster(s,s.players,bad));assert.deepEqual(s,before);
+  startMatch(s,{lineup:s.lineup,score:[0,0],round:0,serving:false,teams:['A','B']});const lineup=clone(s.lineup),live=clone(s.match.lineup),players=clone(s.players);players[1].name='新姓名';
+  saveRoster(s,players,bad);assert.deepEqual(s.lineup,lineup);assert.deepEqual(s.match.lineup,live);assert.equal(s.players[1].name,'新姓名');
+});

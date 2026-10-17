@@ -1,4 +1,4 @@
-const CACHE='lunjian-v3';
+const CACHE='lunjian-v5';
 const SHELL=['./','./index.html','./styles.css','./app.js','./core.js','./storage.js','./manifest.webmanifest','./icons/icon-192.png','./icons/icon-512.png','./icons/apple-touch-icon.png'];
 const BASE=new URL('./',self.location.href);
 const URLS=new Set(SHELL.map(p=>new URL(p,BASE).href));
