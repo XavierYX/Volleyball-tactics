@@ -29,3 +29,10 @@ test('duplicate role selection rejects atomically; roster editing during a match
   startMatch(s,{lineup:s.lineup,score:[0,0],round:0,serving:false,teams:['A','B']});const lineup=clone(s.lineup),live=clone(s.match.lineup),players=clone(s.players);players[1].name='新姓名';
   saveRoster(s,players,bad);assert.deepEqual(s.lineup,lineup);assert.deepEqual(s.match.lineup,live);assert.equal(s.players[1].name,'新姓名');
 });
+
+test('legacy generic positions resolve from existing lineup without mutating saved matches',async()=>{
+ const {resolvePlayerPosition,ROLES,shortName}=await import('../core.js');const s=game();
+ const legacy=['二传','主攻','副攻','接应','主攻','副攻','自由人'];s.players.forEach((p,i)=>p.position=legacy[i]);const before=clone(s);validateState(s);
+ assert.deepEqual(s.players.slice(0,6).map(p=>resolvePlayerPosition(p,s.lineup)),ROLES);assert.deepEqual(s,before);
+ assert.equal(resolvePlayerPosition({id:'bench',position:'主攻'},s.lineup),'');assert.equal(shortName(' 林晓 '),'晓');assert.equal(shortName('张😀'),'😀');
+});

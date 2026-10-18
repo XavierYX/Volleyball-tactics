@@ -1,19 +1,20 @@
-import {clone,id,validateState,POSITIONS} from './core.js';
-const TYPES=['二传','主攻','副攻','接应','自由人','其他'];
+import {clone,id,validateState,POSITIONS,shortName,resolvePlayerPosition} from './core.js';
+// Codes 0–5 remain stable for links created before specific positions were introduced.
+const TYPES=['二传','主攻','副攻','接应','自由人','其他','大主','小主','大副','小副'];
 export const MAX_LINK_LENGTH=16000;
 const MAX_BYTES=65536;
 export function templateSnapshot(state,source='default'){
   const from=source==='match'?state.match:null;
   if(source==='match'&&!from)throw Error('没有正在进行的比赛。');
-  const clean={version:1,players:state.players.map(p=>({id:p.id,name:p.name,short:p.short,position:p.position})),lineup:clone(from?.lineup||state.lineup),formations:clone(from?.formations||state.formations),match:null};
+  const clean={version:1,players:state.players.map(p=>({id:p.id,name:p.name,short:shortName(p.name),position:resolvePlayerPosition(p,from?.lineup||state.lineup)||p.position})),lineup:clone(from?.lineup||state.lineup),formations:clone(from?.formations||state.formations),match:null};
   return clone(validateState(clean));
 }
 function pack(template){
-  return {v:1,p:template.players.map(p=>[p.name,p.short,TYPES.indexOf(p.position)]),l:template.lineup.map(pid=>pid===null?null:template.players.findIndex(p=>p.id===pid)),f:template.formations.map(f=>POSITIONS.map(p=>f[p]))};
+  return {v:2,p:template.players.map(p=>[p.name,p.short,TYPES.indexOf(p.position)]),l:template.lineup.map(pid=>pid===null?null:template.players.findIndex(p=>p.id===pid)),f:template.formations.map(f=>POSITIONS.map(p=>f[p]))};
 }
 function unpack(data){
-  if(data?.v!==1)throw Error('分享链接版本不支持，请更新应用。');
-  if(!Array.isArray(data.p)||data.p.length<6||data.p.length>200||data.p.some(p=>!Array.isArray(p)||p.length!==3||!Number.isInteger(p[2])||p[2]<0||p[2]>=TYPES.length)||!Array.isArray(data.l)||data.l.length!==7||data.l.some(i=>i!==null&&(!Number.isInteger(i)||i<0||i>=data.p.length))||!Array.isArray(data.f)||data.f.length!==6||data.f.some(f=>!Array.isArray(f)||f.length!==6))throw Error('分享链接中的队员或阵型不完整。');
+  if(![1,2].includes(data?.v))throw Error('分享链接版本不支持，请更新应用。');
+  if(!Array.isArray(data.p)||data.p.length<6||data.p.length>200||data.p.some(p=>!Array.isArray(p)||p.length!==3||!Number.isInteger(p[2])||p[2]<0||p[2]>=(data.v===1?6:TYPES.length))||!Array.isArray(data.l)||data.l.length!==7||data.l.some(i=>i!==null&&(!Number.isInteger(i)||i<0||i>=data.p.length))||!Array.isArray(data.f)||data.f.length!==6||data.f.some(f=>!Array.isArray(f)||f.length!==6))throw Error('分享链接中的队员或阵型不完整。');
   const players=data.p.map(([name,short,type])=>({id:id(),name,short,position:TYPES[type]}));
   const template={version:1,players,lineup:data.l.map(i=>i===null?null:players[i].id),formations:data.f.map(f=>Object.fromEntries(POSITIONS.map((p,i)=>[p,f[i]]))),match:null};
   try{return validateState(template);}catch{throw Error('分享链接中的队员或阵型不正确。');}

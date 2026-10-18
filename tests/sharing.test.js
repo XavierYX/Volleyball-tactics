@@ -38,3 +38,16 @@ test('large normal squad roundtrips and the link is a snapshot, not a live subsc
  const link=await makeShareLink(s,BASE);assert.ok(link.length<MAX_LINK_LENGTH);s.players[0].name='后来改名';s.formations[0][1]=[20,20];
  const received=await parseShareLink(link);assert.equal(received.players[0].name,'二传');assert.equal(received.players.length,40);assert.notDeepEqual(received.formations,s.formations);
 });
+
+test('old v1 links with generic positions stay readable and resolve exact starter positions',async()=>{
+ const {resolvePlayerPosition,ROLES}=await import('../core.js');const s=createState();
+ const types=['二传','主攻','副攻','接应','主攻','副攻','自由人'],codes=[0,1,2,3,1,2,4];
+ const legacy={v:1,p:s.players.map((p,i)=>[p.name,p.short,codes[i]]),l:[0,1,2,3,4,5,6],f:s.formations.map(f=>[4,3,2,5,6,1].map(p=>f[p]))};
+ const incoming=await parseShareLink(rawLink(legacy));assert.deepEqual(incoming.players.map(p=>p.position),types);
+ assert.deepEqual(incoming.players.slice(0,6).map(p=>resolvePlayerPosition(p,incoming.lineup)),ROLES);
+ const target=createState();importTemplate(target,incoming);assert.deepEqual(target.players.slice(0,6).map(p=>p.position),ROLES);assert.deepEqual(target.formations,s.formations);
+});
+test('new links retain precise bench positions and derive initials automatically',async()=>{
+ const s=createState();s.players[0].name='王小明';s.players[0].short='王';s.players.push({id:'bench',name:'替补晓',short:'旧',position:'小副'});
+ const link=await makeShareLink(s,BASE);const incoming=await parseShareLink(link);assert.equal(incoming.players[0].short,'明');assert.equal(incoming.players.at(-1).position,'小副');assert.equal(incoming.players.at(-1).short,'晓');
+});
