@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="icons/app-icon-192.png" alt="排阵图标" width="72" />
+  <img src="icons/paizhen-mark.svg" alt="排阵图标" width="72" />
   <h1>排阵 · 排球战术板</h1>
   <p>为排球训练与比赛设计的手机战术板，也是我的一次 Vibe Coding 实践。</p>
   <p><a href="https://xavieryx.github.io/Volleyball-tactics/">在线体验</a> · <a href="#界面与功能">功能展示</a> · <a href="#本地运行">本地运行</a></p>
@@ -64,6 +64,8 @@
 ## 技术实现
 
 原生 **HTML、CSS、JavaScript**，以静态 PWA 形式运行；使用 IndexedDB 保存本机数据，Service Worker 提供离线资源缓存，GitHub Actions 完成测试与构建，GitHub Pages 提供在线访问。
+
+图标采用深色底与蓝黄排球组合；排球线条基于 [Lucide](https://lucide.dev/icons/volleyball) 调整，授权见 [ISC License](icons/LICENSE-lucide)。
 
 ## 本地运行
 

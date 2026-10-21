@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+  <title>排阵：蓝黄排球</title>
+  <rect width="512" height="512" rx="112" fill="#131D31"/>
+  <g transform="translate(37.6 37.6) scale(18.2)">
+    <circle cx="12" cy="12" r="10" fill="#F5CF57"/>
+    <g fill="#4D7DF0">
+      <path d="M12 2A10 10 0 0 1 21.98 11.362A16 16 20 0 0 11 7A13 13 0 0 1 12 2Z"/>
+      <path d="M12 2A10 10 0 0 1 21.98 11.362A16 16 20 0 0 11 7A13 13 0 0 1 12 2Z" transform="rotate(120 12 12)"/>
+      <path d="M12 2A10 10 0 0 1 21.98 11.362A16 16 20 0 0 11 7A13 13 0 0 1 12 2Z" transform="rotate(240 12 12)"/>
+    </g>
+    <!-- Panel seams adapted from Lucide's volleyball icon (ISC); see LICENSE-lucide. -->
+    <g stroke="#131D31" stroke-width="0.65" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M11 7a16 16 20 0 1 10.98 4.362"/>
+      <path d="M12 12a13 13 0 0 1-8.66 5"/>
+      <path d="M16.83 13.634a16 16 0 0 1-9.267 7.328"/>
+      <path d="M20.66 17A13 13 0 0 0 12 12a13 13 0 0 1 0-10"/>
+      <path d="M8.17 15.366a16 16 0 0 1-1.713-11.69"/>
+    </g>
+  </g>
+</svg>
