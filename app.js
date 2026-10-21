@@ -1,8 +1,10 @@
+import {DEFAULT_LIBERO_ROLES,defaultLiberoChoices,migrateLiberoState,eligibleLiberoRoles,rolePosition,liberoReplacementError,setLibero,calibrateLibero} from './libero.js';
+import {shortenLink} from './shortlinks.js';
 import {templateSnapshot,makeShareLink,parseShareLink,importTemplate} from './sharing.js';
 import {ROLES,PLAYER_POSITIONS,shortName,resolvePlayerPosition,POSITIONS,clone,id,createState,startMatch,roleAt,displayedPlayer,scorePoint,undoPoint,correctMatch,checkFormation,substitute,returnStarter,endMatch,validateState,saveRoster} from './core.js';
 import {openStore,readState,writeState} from './storage.js';
 const $=id=>document.getElementById(id);
-let state,viewRound=0,editing=false,editSnapshot=null,mode='match',saveQueue=Promise.resolve(),revision=0,storageBlocked=false,rosterDraft=[],rosterLineup=[],confirmAction,rosterReturnToSub=false,toastTimer,workerRegistration,updateRequested=false;
+let state,viewRound=0,editing=false,editSnapshot=null,mode='match',saveQueue=Promise.resolve(),revision=0,storageBlocked=false,rosterDraft=[],rosterLineup=[],rosterLiberoPlan=[],confirmAction,rosterReturnToSub=false,toastTimer,workerRegistration,updateRequested=false;
 function el(tag,props={},...children){const e=document.createElement(tag);for(const [k,v]of Object.entries(props)){if(k==='text')e.textContent=v;else if(k==='class')e.className=v;else e.setAttribute(k,v)}for(const c of children)e.append(c);return e}
 const playerName=pid=>state.players.find(p=>p.id===pid)?.name||'未安排';
 function toast(message){clearTimeout(toastTimer);$('toast').textContent=message;$('toast').hidden=false;toastTimer=setTimeout(()=>$('toast').hidden=true,2800)}
@@ -24,7 +26,7 @@ function render(){
   $('match-caption').textContent=hasMatch?`R${m.round+1}`:'';
   $('team-us').textContent=hasMatch?m.teams[0]:'我方';$('team-them').textContent=hasMatch?m.teams[1]:'对方';
   $('score-us').textContent=String(m.score[0]).padStart(2,'0');$('score-them').textContent=String(m.score[1]).padStart(2,'0');
-  const canScore=hasMatch&&!editing&&!preview&&mode==='match';
+  const canScore=hasMatch&&!editing&&!preview&&mode==='match'&&m.libero.verified;
   for(const side of ['us','them']){const index=side==='us'?0:1;$('add-'+side).disabled=!canScore;$('minus-'+side).disabled=!canScore||m.score[index]===0;}
   $('undo').disabled=!hasMatch||!m.history.length||editing||preview||mode!=='match';
   $('correct').disabled=!hasMatch||editing;$('exit').disabled=editing;$('substitute').hidden=!hasMatch||editing; $('substitute').disabled=!hasMatch||editing||preview||mode!=='match';
@@ -57,6 +59,10 @@ function render(){
   $('restore-round').hidden=!editing;
   $('restore-round').textContent=mode==='default'?'本轮恢复规整站位':'恢复本轮默认';
 
+  const selected=hasMatch&&!preview?m.libero.role:(m.liberoChoices??state.liberoChoices)[viewRound];
+  $('libero-bar').hidden=editing;
+  $('libero-status').textContent=!m.lineup[6]?'未安排自由人':hasMatch&&!preview&&!m.libero.verified?'自由人状态待确认':selected===null?'自由人场下':`自由人替换${ROLES[selected]}`;
+  $('libero-open').disabled=!m.lineup[6]||preview;
   updateGeometry();
 }
 function updateGeometry(){
@@ -82,17 +88,49 @@ function confirm(message,action){$('confirm-copy').textContent=message;confirmAc
 $('confirm-yes').onclick=()=>{const action=confirmAction;confirmAction=null;$('confirm-dialog').close();action?.();};
 function openSetup(){
   finishEditing();$('setup-error').textContent='';roundOptions($('setup-round'),viewRound);$('setup-score-us').value=0;$('setup-score-them').value=0;$('setup-lineup').replaceChildren();
-  [...ROLES,'自由人'].forEach((role,i)=>{const select=el('select',{id:'setup-role-'+i});selectOptions(select,[...(i===6?[{value:'',label:'不使用自由人'}]:[]),...state.players.map(p=>({value:p.id,label:`${p.name} · ${resolvePlayerPosition(p)||'未指定'}`}))],state.lineup[i]||'');$('setup-lineup').append(el('label',{class:'field'},document.createTextNode(role),select));});$('setup-dialog').showModal();
+  [...ROLES,'自由人'].forEach((role,i)=>{const select=el('select',{id:'setup-role-'+i});selectOptions(select,[...(i===6?[{value:'',label:'不使用自由人'}]:[]),...state.players.map(p=>({value:p.id,label:`${p.name} · ${resolvePlayerPosition(p)||'未指定'}`}))],state.lineup[i]||'');select.onchange=renderSetupLibero;$('setup-lineup').append(el('label',{class:'field'},document.createTextNode(role),select));});renderSetupLibero();$('setup-dialog').showModal();
 }
+
+const readLiberoRole=select=>select.value===''?null:+select.value;
+function liberoOptions(m){return [{value:'',label:'自由人场下'},...eligibleLiberoRoles(m).map(r=>({value:r,label:`替换${ROLES[r]} · ${playerName(m.lineup[r])}`}))];}
+function renderSetupLibero(){
+ const m={lineup:Array.from({length:7},(_,i)=>$('setup-role-'+i).value||null),round:+$('setup-round').value,serving:$('setup-serve').value==='us',liberoPlan:state.liberoPlan};
+ const preferred=state.liberoChoices[m.round],role=eligibleLiberoRoles(m).includes(preferred)?preferred:null;selectOptions($('setup-libero'),liberoOptions(m),role??'');
+}
+$('setup-round').onchange=renderSetupLibero;$('setup-serve').onchange=renderSetupLibero;
+function renderCorrectLibero(){const m={...state.match,round:+$('correct-round').value,serving:$('correct-serve').value==='us',liberoRole:readLiberoRole($('correct-libero'))};const r=state.match.libero.role;selectOptions($('correct-libero'),liberoOptions(m),eligibleLiberoRoles(m).includes(r)?r:'');}
+$('correct-round').onchange=renderCorrectLibero;$('correct-serve').onchange=renderCorrectLibero;
+function updateLiberoSubmit(){
+ const role=readLiberoRole($('libero-role')),m=state.match;
+ const error=m&&m.libero.verified?liberoReplacementError(m,role):'';$('libero-error').textContent=error;
+ $('libero-submit').disabled=!!error||!!m&&m.libero.verified&&role===m.libero.role;
+ $('libero-submit').textContent=!m?'保存本轮预设':!m.libero.verified?'确认当前状态':role===null?'原队员回场':'自由人上场';
+}
+$('libero-open').onclick=()=>{
+ finishEditing();const m=state.match||{...active(),liberoPlan:state.liberoPlan,serving:false,round:viewRound};
+ $('libero-current').textContent=$('libero-status').textContent;$('libero-confirm-label').hidden=!state.match;$('libero-confirm').checked=false;
+ $('libero-confirm-label').lastChild.textContent=state.match&&!state.match.libero.verified?'已核对现场自由人状态和替换间隔；当前死球且未鸣哨':'当前为死球，且尚未鸣发球哨';
+ const r=state.match?m.libero.role:state.liberoChoices[viewRound];selectOptions($('libero-role'),liberoOptions(m),r??'');
+ $('libero-history').replaceChildren();for(const e of [...(m.libero?.events??[])].reverse().slice(0,20))$('libero-history').append(el('p',{text:`${e.score.join(':')} · ${e.reason==='correction'?(e.to===null?'自由人场下':'自由人替换'+ROLES[e.to]):e.to===null?ROLES[e.from]+'原队员回场':'自由人替换'+ROLES[e.to]}${e.reason==='rotation'?'（轮转）':e.reason==='correction'?'（核对）':''}`}));
+ $('libero-records').hidden=!state.match;updateLiberoSubmit();$('libero-dialog').showModal();
+};
+$('libero-role').onchange=updateLiberoSubmit;
+$('libero-form').onsubmit=e=>{e.preventDefault();try{
+ const role=readLiberoRole($('libero-role'));
+ if(state.match){if(!state.match.libero.verified)calibrateLibero(state.match,role,{deadBallConfirmed:$('libero-confirm').checked});else setLibero(state.match,role,{deadBallConfirmed:$('libero-confirm').checked});}
+ else state.liberoChoices[viewRound]=role;
+ save();render();$('libero-dialog').close();
+}catch(err){$('libero-error').textContent=err.message;}};
+
 $('start').onclick=openSetup;
-$('setup-form').onsubmit=e=>{e.preventDefault();try{startMatch(state,{lineup:Array.from({length:7},(_,i)=>$('setup-role-'+i).value||null),score:[+$('setup-score-us').value,+$('setup-score-them').value],round:+$('setup-round').value,serving:$('setup-serve').value==='us',teams:[$('setup-us').value,$('setup-them').value]});mode='match';viewRound=state.match.round;$('setup-dialog').close();save();render();}catch(err){$('setup-error').textContent=err.message}};
+$('setup-form').onsubmit=e=>{e.preventDefault();try{startMatch(state,{lineup:Array.from({length:7},(_,i)=>$('setup-role-'+i).value||null),score:[+$('setup-score-us').value,+$('setup-score-them').value],round:+$('setup-round').value,serving:$('setup-serve').value==='us',teams:[$('setup-us').value,$('setup-them').value],liberoRole:readLiberoRole($('setup-libero'))});mode='match';viewRound=state.match.round;$('setup-dialog').close();save();render();}catch(err){$('setup-error').textContent=err.message}};
 for(const [side,team]of [['us',0],['them',1]])for(const [prefix,delta]of [['add',1],['minus',-1]])$(prefix+'-'+side).onclick=()=>run(()=>{if(!state.match||editing||viewRound!==state.match.round)return;scorePoint(state.match,team,delta);viewRound=state.match.round;});
 $('undo').onclick=()=>run(()=>{undoPoint(state.match);viewRound=state.match.round;});
 $('return-current').onclick=()=>{finishEditing();viewRound=state.match.round;mode='match';render()};
 $('edit').onclick=()=>{if(editing)finishEditing();else{editSnapshot=clone(formations()[viewRound]);editing=true;}render();$('edit').focus({preventScroll:true});};
 $('cancel-edit').onclick=()=>{if(!editing)return;formations()[viewRound]=clone(editSnapshot);editing=false;editSnapshot=null;render();$('edit').focus({preventScroll:true});};
-$('correct').onclick=()=>{const m=state.match;$('correct-us').value=m.score[0];$('correct-them').value=m.score[1];roundOptions($('correct-round'),m.round);$('correct-serve').value=m.serving?'us':'them';$('correct-error').textContent='';$('correct-dialog').showModal();};
-$('correct-form').onsubmit=e=>{e.preventDefault();try{correctMatch(state.match,{score:[+$('correct-us').value,+$('correct-them').value],round:+$('correct-round').value,serving:$('correct-serve').value==='us'});viewRound=state.match.round;$('correct-dialog').close();save();render();}catch(err){$('correct-error').textContent=err.message}};
+$('correct').onclick=()=>{const m=state.match;$('correct-us').value=m.score[0];$('correct-them').value=m.score[1];roundOptions($('correct-round'),m.round);$('correct-serve').value=m.serving?'us':'them';$('correct-error').textContent='';$('correct-libero-confirm').checked=false;renderCorrectLibero();$('correct-dialog').showModal();};
+$('correct-form').onsubmit=e=>{e.preventDefault();try{correctMatch(state.match,{score:[+$('correct-us').value,+$('correct-them').value],round:+$('correct-round').value,serving:$('correct-serve').value==='us',liberoRole:readLiberoRole($('correct-libero'))});viewRound=state.match.round;$('correct-dialog').close();save();render();}catch(err){$('correct-error').textContent=err.message}};
 $('restore-round').onclick=()=>{if(!editing)return;confirm(`确认恢复 R${viewRound+1} 的${mode==='default'?'规整站位':'默认站位'}？本轮调整将被替换。`,()=>{formations()[viewRound]=clone(mode==='default'?{1:[79,74],2:[79,26],3:[50,26],4:[21,26],5:[21,74],6:[50,74]}:state.formations[viewRound]);render();});};
 $('exit').onclick=()=>{finishEditing();$('exit-dialog').showModal()};
 for(const [button,overwrite]of [['exit-save',true],['exit-discard',false]])$(button).onclick=()=>run(()=>{endMatch(state,overwrite);viewRound=0;mode='default';$('exit-dialog').close();toast(overwrite?'已保存默认六轮站位':'已退出，默认站位保持不变');});
@@ -112,7 +150,7 @@ function renderRosterRoles(){
   });
 }
 function renderRoster(){
-  renderRosterRoles();$('roster-fields').replaceChildren();
+  renderRosterRoles();$('libero-plan-options').replaceChildren(...ROLES.map((role,i)=>{const check=el('input',{type:'checkbox',value:i,'aria-label':'自由人可替换'+role});check.checked=rosterLiberoPlan.includes(i);check.disabled=!!state.match;check.onchange=()=>{rosterLiberoPlan=check.checked?[...rosterLiberoPlan,i]:rosterLiberoPlan.filter(r=>r!==i);};return el('label',{},check,document.createTextNode(role));}));$('roster-fields').replaceChildren();
   for(const p of rosterDraft){
     const name=el('input',{value:p.name,maxlength:32,required:'',placeholder:'姓名','aria-label':'队员姓名'}),position=el('select',{'aria-label':'队员位置',required:''});
     selectOptions(position,[{value:'',label:'请选择位置'},...PLAYER_POSITIONS.map(v=>({value:v,label:v}))],p.position);position.options[0].disabled=true;
@@ -122,12 +160,12 @@ function renderRoster(){
     const row=el('div',{class:'roster-item'},el('div',{class:'roster-fields'},name,position,remove));$('roster-fields').append(row);
   }
 }
-$('nav-roster').onclick=()=>{rosterReturnToSub=false;finishEditing();rosterDraft=clone(state.players).map(p=>({...p,position:resolvePlayerPosition(p)}));rosterLineup=clone(state.match?.lineup||state.lineup);$('roster-error').textContent='';renderRoster();$('roster-dialog').showModal()};
+$('nav-roster').onclick=()=>{rosterReturnToSub=false;finishEditing();rosterLiberoPlan=clone(state.liberoPlan);rosterDraft=clone(state.players).map(p=>({...p,position:resolvePlayerPosition(p)}));rosterLineup=clone(state.match?.lineup||state.lineup);$('roster-error').textContent='';renderRoster();$('roster-dialog').showModal()};
 $('add-player').onclick=()=>{if(rosterDraft.length>=200){$('roster-error').textContent='最多支持 200 名队员。';return}rosterDraft.push({id:id(),name:'',short:'',position:'其他'});renderRoster();$('roster-fields').lastElementChild.querySelector('input').focus();};
-$('roster-form').onsubmit=e=>{e.preventDefault();try{const players=rosterDraft.map(p=>({...p,name:p.name.trim(),short:shortName(p.name)}));saveRoster(state,players,rosterLineup);const returnToSub=rosterReturnToSub;rosterReturnToSub=false;$('roster-dialog').close();save();render();if(returnToSub&&state.match){renderSub();$('sub-dialog').showModal();}toast('队员名单已保存');}catch(err){$('roster-error').textContent=err.message}};
+$('roster-form').onsubmit=e=>{e.preventDefault();try{const players=rosterDraft.map(p=>({...p,name:p.name.trim(),short:shortName(p.name)}));const next=clone(state);saveRoster(next,players,rosterLineup);if(!next.match&&JSON.stringify(next.liberoPlan)!==JSON.stringify(rosterLiberoPlan)){next.liberoPlan=clone(rosterLiberoPlan);next.liberoChoices=defaultLiberoChoices(rosterLiberoPlan);}validateState(next);state=next;const returnToSub=rosterReturnToSub;rosterReturnToSub=false;$('roster-dialog').close();save();render();if(returnToSub&&state.match){renderSub();$('sub-dialog').showModal();}toast('队员名单已保存');}catch(err){$('roster-error').textContent=err.message}};
 function renderSub(){
   const m=state.match;$('sub-error').textContent='';
-  selectOptions($('sub-role'),[...ROLES,'自由人'].map((label,i)=>({value:i,label:`${label} · ${playerName(m.lineup[i])}`})));
+  selectOptions($('sub-role'),ROLES.map((label,i)=>({value:i,label:`${label} · ${playerName(m.lineup[i])}`})));
   const bench=state.players.filter(p=>!m.lineup.includes(p.id));selectOptions($('sub-player'),bench.length?bench.map(p=>({value:p.id,label:`${p.name} · ${resolvePlayerPosition(p)||'未指定'}`})):[{value:'',label:'请先在队员中添加替补'}]);
   $('sub-add-player').hidden=bench.length>0;$('sub-form').querySelector('[type=submit]').disabled=!bench.length;
   $('return-list').replaceChildren();m.lineup.forEach((pid,role)=>{const original=m.originalLineup[role];if(!original||pid===original)return;const b=el('button',{type:'button',class:'secondary',text:`${ROLES[role]||'自由人'}换回 ${playerName(original)}`});b.style.width='100%';b.style.marginTop='10px';b.onclick=()=>{try{returnStarter(state,role);save();render();renderSub();}catch(e){$('sub-error').textContent=e.message}};$('return-list').append(b);});
@@ -138,20 +176,20 @@ $('sub-add-player').onclick=()=>{$('sub-dialog').close();$('nav-roster').click()
 $('substitute').onclick=()=>{renderSub();$('sub-dialog').showModal()};
 $('sub-form').onsubmit=e=>{e.preventDefault();try{substitute(state,+$('sub-role').value,$('sub-player').value);save();render();renderSub();toast('已换人，轮次和站位保持不变');}catch(err){$('sub-error').textContent=err.message}};
 $('help').onclick=()=>{finishEditing();$('help-dialog').showModal()};
-let shareRequest=0,importRequest=0,pendingTemplate=null;
+let shareRequest=0,importRequest=0,pendingTemplate=null,fullShareLink='';const shortCache=new Map();
 function clearShareHash(){
   const url=new URL(location.href),params=new URLSearchParams(url.hash.slice(1));
   if(params.has('pz')){params.delete('pz');url.hash=params.toString();history.replaceState(null,'',url.href);}
 }
 async function prepareShare(){
-  const request=++shareRequest;$('share-error').textContent='';$('share-link').value='正在生成链接…';$('copy-share').disabled=true;
-  try{
-    const source=$('share-source').value,snapshot=templateSnapshot(state,source);
-    $('share-summary').textContent=`${snapshot.players.length} 名队员 · 6 轮阵型`;
-    const link=await makeShareLink(state,location.href,source);
-    if(request!==shareRequest||!$('share-dialog').open)return;
-    $('share-link').value=link;$('copy-share').disabled=false;
-  }catch(err){if(request===shareRequest){$('share-link').value='';$('share-error').textContent=err.message;}}
+ const request=++shareRequest;$('share-error').textContent='';$('share-link').value='正在生成短链接…';$('copy-share').disabled=true;$('copy-full-share').disabled=true;fullShareLink='';
+ try{
+  const source=$('share-source').value,snapshot=templateSnapshot(state,source);$('share-summary').textContent=`${snapshot.players.length} 名队员 · 6 轮阵型`;
+  const full=await makeShareLink(state,location.href,source);if(request!==shareRequest||!$('share-dialog').open)return;
+  fullShareLink=full;$('copy-full-share').disabled=false;
+  const short=shortCache.get(full)||await shortenLink(full);shortCache.set(full,short);
+  if(request!==shareRequest||!$('share-dialog').open)return;$('share-link').value=short;$('copy-share').disabled=false;
+ }catch(err){if(request===shareRequest){$('share-link').value='';$('share-error').textContent=err.message;}}
 }
 function openShare(){
   finishEditing();$('help-dialog').close();
@@ -160,10 +198,9 @@ function openShare(){
 }
 function openImport(){finishEditing();$('help-dialog').close();$('import-error').textContent='';$('import-dialog').showModal();}
 $('open-share').onclick=openShare;$('open-import').onclick=openImport;$('share-source').onchange=prepareShare;
-$('copy-share').onclick=async()=>{
-  try{if(!navigator.clipboard?.writeText)throw Error('clipboard unavailable');await navigator.clipboard.writeText($('share-link').value);toast('分享链接已复制');}
-  catch{$('share-link').focus();$('share-link').select();toast('请长按链接选择复制');}
-};
+async function copyLink(value){try{if(!navigator.clipboard?.writeText)throw Error();await navigator.clipboard.writeText(value);toast('分享链接已复制');}catch{$('share-link').value=value;$('share-link').focus();$('share-link').select();toast('请长按链接选择复制');}}
+$('copy-share').onclick=()=>copyLink($('share-link').value);
+$('copy-full-share').onclick=()=>copyLink(fullShareLink);
 async function previewImportLink(){
   const request=++importRequest;$('import-error').textContent='';$('preview-import').disabled=true;$('preview-import').textContent='正在读取…';
   try{
@@ -216,6 +253,6 @@ async function offlineSetup(){
     navigator.serviceWorker.addEventListener('controllerchange',()=>{if(updateRequested&&!state.match)location.reload();});
   }catch{$('offline-status').textContent='离线缓存未完成，请联网重试；当前编辑仍可保存。';}
 }
-try{await openStore();const saved=await readState();state=saved?validateState(saved):createState();viewRound=state.match?.round||0;mode=state.match?'match':'default';$('save-status').textContent=saved?'已恢复本机数据':'已准备好';if(!saved)save();}
+try{await openStore();const saved=await readState();state=migrateLiberoState(saved?validateState(saved):createState());viewRound=state.match?.round||0;mode=state.match?'match':'default';$('save-status').textContent=saved?'已恢复本机数据':'已准备好';if(!saved)save();}
 catch{state=createState();storageBlocked=true;showSaveError('本机数据读取失败，未覆盖原数据。当前可临时使用，请复制分享链接保存名单与阵型；可尝试关闭其他页面再打开。');}
 render();offlineSetup();receiveShareHash();

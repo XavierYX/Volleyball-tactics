@@ -156,3 +156,5 @@ textarea { min-height: 88px; padding: 11px; font-size: 16px; resize: vertical; o
   .court-layout { grid-template-columns: minmax(0, 1fr) 76px; }
   .roster-fields, .small-labels { grid-template-columns: minmax(0, 1fr) 96px 44px; gap: 6px; }
 }
+
+.libero-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px;font-size:12px;color:var(--muted)}.libero-bar button{min-height:44px;font-size:12px;padding:0 12px}.libero-plan{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}#roster-libero-plan{border:1px solid var(--line);border-radius:10px;margin:16px 0;padding:8px 10px}#roster-libero-plan legend{font-size:13px;color:var(--muted)}.libero-plan label,.confirmation{display:flex;align-items:center;gap:8px;font-size:12px;min-height:44px}.libero-plan input,.confirmation input{width:20px;height:20px;min-height:20px;margin:0;flex-shrink:0;accent-color:var(--accent)}.confirmation{margin:10px 0;color:var(--muted)}#libero-records{margin-top:16px}#libero-records summary{min-height:44px;font-size:12px;color:var(--muted);cursor:pointer}#libero-history p{margin-bottom:6px}
