@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createState,startMatch,clone,validateState,scorePoint} from '../core.js';
 import {templateSnapshot,makeShareLink,parseShareLink,importTemplate,MAX_LINK_LENGTH} from '../sharing.js';
 const BASE='https://paizhen-volleyball.youx-us.chatgpt.site/';
+const roleNames=t=>t.lineup.map(pid=>pid===null?null:t.players.find(p=>p.id===pid).name);
 const normalize=t=>({players:t.players.map(({name,short,position})=>({name,short,position})),lineup:t.lineup.map(pid=>pid===null?null:t.players.findIndex(p=>p.id===pid)),formations:t.formations});
 function rawLink(data){return BASE+'#pz=j1.'+Buffer.from(JSON.stringify(data)).toString('base64url');}
 test('compressed Chinese roster and all six edited formations roundtrip without original IDs',async()=>{
@@ -22,7 +23,7 @@ test('import requires a deliberate call, preserves a running game, and rejects m
  const sender=createState(),receiver=createState();sender.players[0].name='新二传';const before=clone(receiver),incoming=await parseShareLink(await makeShareLink(sender,BASE));assert.deepEqual(receiver,before);
  startMatch(receiver,{lineup:receiver.lineup,score:[1,2],round:3,serving:true,teams:['A','B']});const running=clone(receiver);assert.throws(()=>importTemplate(receiver,incoming),/先退出/);assert.deepEqual(receiver,running);
  receiver.match=null;const noMatch=clone(receiver);assert.throws(()=>importTemplate(receiver,{...incoming,lineup:[] }));assert.deepEqual(receiver,noMatch);
- importTemplate(receiver,incoming);assert.deepEqual(normalize(receiver),normalize(incoming));assert.equal(receiver.match,null);
+ importTemplate(receiver,incoming);assert.deepEqual(roleNames(receiver),roleNames(incoming));assert.deepEqual(receiver.formations,incoming.formations);assert.equal(receiver.players.length,8);assert.equal(receiver.lineupSets.length,2);assert.deepEqual(receiver.lineupSets[0].lineup,noMatch.lineup);assert.equal(receiver.match,null);
 });
 test('incomplete links, unsupported versions and malformed roster/coordinates are rejected',async()=>{
  const s=createState(),plain=await makeShareLink(s,BASE,'default',{compress:false}),data=JSON.parse(Buffer.from(new URL(plain).hash.split('.')[1],'base64url').toString());
@@ -43,7 +44,7 @@ test('old v1 generic positions stay generic and retain the exact starting role a
  const s=createState(),types=['二传','主攻','副攻','接应','主攻','副攻','自由人'],codes=[0,1,2,3,1,2,4];
  const legacy={v:1,p:s.players.map((p,i)=>[p.name,p.short,codes[i]]),l:[0,1,2,3,4,5,6],f:s.formations.map(f=>[4,3,2,5,6,1].map(p=>f[p]))};
  const incoming=await parseShareLink(rawLink(legacy));assert.deepEqual(incoming.players.map(p=>p.position),types);
- const target=createState();importTemplate(target,incoming);assert.deepEqual(target.players.map(p=>p.position),types);assert.deepEqual(target.lineup,incoming.lineup);assert.deepEqual(target.formations,s.formations);
+ const target=createState();importTemplate(target,incoming);assert.deepEqual(target.players.map(p=>p.position),types);assert.deepEqual(roleNames(target),roleNames(incoming));assert.deepEqual(target.formations,s.formations);
 });
 test('new links normalize legacy precise positions and derive initials automatically',async()=>{
  const s=createState();s.players[0].name='王小明';s.players[0].short='王';s.players.push({id:'bench',name:'替补晓',short:'旧',position:'小副'});
@@ -53,5 +54,7 @@ test('old v2 precise-position links merge player positions without changing role
  const s=createState(),legacy={v:2,p:s.players.map((p,i)=>[p.name,p.short,[0,6,9,3,7,8,4][i]]),l:[0,1,2,3,4,5,6],f:s.formations.map(f=>[4,3,2,5,6,1].map(p=>f[p]))};
  const incoming=await parseShareLink(rawLink(legacy));assert.deepEqual(incoming.players.map(p=>p.position),['二传','主攻','副攻','接应','主攻','副攻','自由人']);
  assert.deepEqual(incoming.lineup.map(pid=>incoming.players.findIndex(p=>p.id===pid)),legacy.l);
- const target=createState();importTemplate(target,incoming);assert.deepEqual(target.lineup,incoming.lineup);assert.deepEqual(target.formations,s.formations);
+ const target=createState();importTemplate(target,incoming);assert.deepEqual(roleNames(target),roleNames(incoming));assert.deepEqual(target.formations,s.formations);
 });
+
+test('v3 links without lineup names still import as an additional lineup',async()=>{const s=createState(),plain=await makeShareLink(s,BASE,'default',{compress:false});const data=JSON.parse(Buffer.from(new URL(plain).hash.split('.')[1],'base64url'));data.v=3;delete data.n;const incoming=await parseShareLink(rawLink(data));const receiver=createState();importTemplate(receiver,incoming);assert.equal(receiver.lineupSets.length,2);assert.equal(receiver.players.length,7);assert.deepEqual(receiver.liberoPlan,[1,5]);});

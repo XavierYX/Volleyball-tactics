@@ -29,8 +29,10 @@ export function startMatch(state, config) {
   if(!Number.isInteger(config.round)||config.round<0||config.round>5||typeof config.serving!=='boolean'||!validScore(config.score)) throw Error('请检查轮次和比分。');
   const plan=state.liberoPlan??DEFAULT_LIBERO_ROLES,choices=state.liberoChoices??defaultLiberoChoices(plan),initial=config.liberoRole??null;
   if(initial!==null&&(!config.lineup[6]||!plan.includes(initial)||![1,5,6].includes(rolePosition(initial,config.round))||(config.serving&&roleAt(1,config.round)===initial)))throw Error('自由人开场只能替换允许的后排角色，不能替换发球队员。');
+  if(state.match)throw Error('请先退出当前比赛。');
   state.lineup=clone(config.lineup);
-  state.match={round:config.round,serving:config.serving,score:clone(config.score),teams:config.teams.map(x=>x.trim()||'球队'),lineup:clone(config.lineup),originalLineup:clone(config.lineup),formations:clone(state.formations),history:[],substitutions:[],startedAt:new Date().toISOString(),liberoPlan:clone(plan),liberoChoices:clone(choices)};
+  syncLineup(state);
+  state.match={lineupId:state.activeLineupId??null,round:config.round,serving:config.serving,score:clone(config.score),teams:config.teams.map(x=>x.trim()||'球队'),lineup:clone(config.lineup),originalLineup:clone(config.lineup),formations:clone(state.formations),history:[],substitutions:[],startedAt:new Date().toISOString(),liberoPlan:clone(plan),liberoChoices:clone(choices)};
   state.match.libero=newLiberoState(state.match,initial);
 }
 export function validScore(score) { return Array.isArray(score)&&score.length===2&&score.every(n=>Number.isSafeInteger(n)&&n>=0&&n<9999); }
@@ -98,6 +100,7 @@ export function endMatch(state,overwrite) {
   if(!state.match)return;
   if(overwrite)state.formations=clone(state.match.formations);
   state.match=null;
+  syncLineup(state);
 }
 function validFormations(f) {
   return Array.isArray(f)&&f.length===6&&f.every(c=>c&&POSITIONS.every(p=>Array.isArray(c[p])&&c[p].length===2&&c[p].every(n=>typeof n==='number'&&Number.isFinite(n)&&n>=0&&n<=100)));
@@ -111,6 +114,15 @@ export function validateState(s) {
   if(new Set(s.players.map(p=>p.id)).size!==s.players.length||s.players.some(p=>!p||typeof p.id!=='string'||!p.id||typeof p.name!=='string'||!p.name.trim()||p.name.length>32||typeof p.short!=='string'||Array.from(p.short).length!==1||![...PLAYER_POSITIONS,...ROLES].includes(p.position)))throw Error('队员信息不完整。');
   if(s.liberoPlan!==undefined&&!validPlan(s.liberoPlan)||s.liberoChoices!==undefined&&!validChoices(s.liberoChoices,s.liberoPlan??DEFAULT_LIBERO_ROLES))throw Error('自由人预设不正确。');
   if(!validLineup(s.lineup,s.players)||!validFormations(s.formations))throw Error('首发名单或六轮站位不正确。');
+  if(s.lineupSets!==undefined){
+    if(!Array.isArray(s.lineupSets)||!s.lineupSets.length||s.lineupSets.length>30||new Set(s.lineupSets.map(x=>x?.id)).size!==s.lineupSets.length||!s.lineupSets.some(x=>x.id===s.activeLineupId)||new Set(s.lineupSets.map(x=>x?.name)).size!==s.lineupSets.length)throw Error('阵容列表不正确。');
+    for(const set of s.lineupSets){
+      if(!set||typeof set.id!=='string'||!set.id||typeof set.name!=='string'||!set.name.trim()||set.name.length>24)throw Error('阵容名称不正确。');
+      // The top-level fields are the current working copy; the selected record is synchronized before saving.
+      if(set.id!==s.activeLineupId&&(!validLineup(set.lineup,s.players)||!validFormations(set.formations)||!validPlan(set.liberoPlan)||!validChoices(set.liberoChoices,set.liberoPlan)))throw Error('阵容首发或站位不正确。');
+    }
+    if(s.match?.lineupId&&s.match.lineupId!==s.activeLineupId)throw Error('比赛阵容与所选阵容不一致。');
+  }
   if(s.match!==null){
     const m=s.match;
     if(!m||!validScore(m.score)||!Number.isInteger(m.round)||m.round<0||m.round>5||typeof m.serving!=='boolean'||!validLineup(m.lineup,s.players)||!validLineup(m.originalLineup,s.players)||!validFormations(m.formations)||!Array.isArray(m.history)||m.history.length>100000||!Array.isArray(m.substitutions)||!Array.isArray(m.teams)||m.teams.length!==2||m.teams.some(x=>typeof x!=='string'||x.length>24))throw Error('比赛数据不正确。');
@@ -128,4 +140,39 @@ export function saveRoster(state,players,lineup){
   validateState(next);
   state.players=players.map(p=>({...clone(p),position:resolvePlayerPosition(p)}));
   if(!state.match)state.lineup=clone(lineup);
+  syncLineup(state);
+}
+
+
+/** All lineups share players; top-level fields are the active lineup's working copy. */
+export const MAX_LINEUPS=30;
+const lineupFields=['lineup','formations','liberoPlan','liberoChoices'];
+export function lineupData(state){return {lineup:clone(state.lineup),formations:clone(state.formations),liberoPlan:clone(state.liberoPlan??DEFAULT_LIBERO_ROLES),liberoChoices:clone(state.liberoChoices??defaultLiberoChoices(state.liberoPlan??DEFAULT_LIBERO_ROLES))};}
+export function migrateLineups(state){
+  if(!state.lineupSets){const first={id:id(),name:'阵容 1',...lineupData(state)};state.lineupSets=[first];state.activeLineupId=first.id;}
+  if(state.match)state.match.lineupId??=state.activeLineupId;
+  return state;
+}
+export function syncLineup(state){const current=state.lineupSets?.find(x=>x.id===state.activeLineupId);if(current)Object.assign(current,lineupData(state));}
+function editableLineups(state){if(state.match)throw Error('请先退出当前比赛，再切换或管理阵容。');migrateLineups(state);}
+function lineupName(state,name,except){
+  if(typeof name!=='string'||!name.trim()||name.trim().length>24)throw Error('阵容名称需为 1–24 个字。');
+  const clean=name.trim();if(state.lineupSets.some(x=>x.id!==except&&x.name===clean))throw Error('已存在同名阵容，请换一个名称。');return clean;
+}
+export function nextLineupName(state,prefix='阵容'){let n=1;while(state.lineupSets?.some(x=>x.name===`${prefix} ${n}`))n++;return `${prefix} ${n}`;}
+export function selectLineup(state,lineupId){
+  editableLineups(state);const target=state.lineupSets.find(x=>x.id===lineupId);if(!target)throw Error('该阵容不存在。');
+  syncLineup(state);state.activeLineupId=target.id;for(const key of lineupFields)state[key]=clone(target[key]);
+}
+export function createLineup(state,name,{regular=false}={}){
+  editableLineups(state);if(state.lineupSets.length>=MAX_LINEUPS)throw Error('最多保存 30 套阵容。');
+  const clean=lineupName(state,name);syncLineup(state);const set={id:id(),name:clean,...lineupData(state)};
+  if(regular)set.formations=standardFormations();state.lineupSets.push(set);selectLineup(state,set.id);return set;
+}
+export function renameLineup(state,name){editableLineups(state);const clean=lineupName(state,name,state.activeLineupId);state.lineupSets.find(x=>x.id===state.activeLineupId).name=clean;}
+export function deleteLineup(state,lineupId){
+  editableLineups(state);if(state.lineupSets.length===1)throw Error('至少保留一套阵容。');
+  if(!state.lineupSets.some(x=>x.id===lineupId))throw Error('该阵容不存在。');
+  if(lineupId===state.activeLineupId)selectLineup(state,state.lineupSets.find(x=>x.id!==lineupId).id);
+  state.lineupSets=state.lineupSets.filter(x=>x.id!==lineupId);
 }
