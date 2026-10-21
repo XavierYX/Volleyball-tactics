@@ -16,3 +16,25 @@ body{background:var(--bg)}.device{margin:24px auto;max-width:460px;box-shadow:va
 
 /* Roster rows: name, precise position, remove. */
 .roster-fields,.small-labels{grid-template-columns:minmax(0,1fr) 104px 44px;gap:8px}.roster-fields select{font-size:14px}.roster-fields button{min-width:44px}.roster-item{padding:11px 0}
+
+/* Court-centered match workflow. */
+:root{--court:#e4f2ef;--court-line:#a3c4bf}
+.welcome{padding:0;border:0;background:none;margin:10px 0 18px}.welcome button{min-height:48px}
+.score-meta{justify-content:flex-end}.scoreboard{padding:14px 16px 12px;border-radius:18px}.score-row{margin-top:2px}
+.score-controls{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.score-controls button{width:100%;min-height:44px;font-size:16px;font-weight:600;border:0;border-radius:10px;color:#285cba;background:#e4edff}
+.score-controls .score-minus{background:#eef1f6;color:#515f73}.opponent .score-add{background:#e4edff;color:#285cba}
+.score-controls button:disabled{opacity:.55}.scoreboard-tools{padding-bottom:8px}.score-undo{font-size:12px}
+.section-title{margin:20px 0 8px;gap:8px}.section-title h2{font-size:16px}
+.round-area{margin:0 0 10px}.round-heading{margin-bottom:5px;font-size:11px}.round-heading button{min-height:36px;font-size:11px}
+.round{min-height:44px}.round small:empty{display:none}.round small{min-height:0}
+.court-tools{display:flex;gap:8px;align-items:center;margin:0 0 12px;flex-wrap:wrap}
+.court-tools button{min-height:44px;padding:0 12px;font-size:12px;border-radius:10px}
+.court-tools #edit{margin-left:auto;min-width:112px}.court-tools #restore-round{color:var(--muted);background:#e9edf3}
+.court-tools #substitute{background:var(--card)}.court-tools #edit[aria-pressed=true]{background:#285fc8}
+.mini-aside{padding-top:0;text-align:center}.mini-title{margin:7px 0 0;color:var(--muted);font-size:10px;font-weight:500}.mini-round{margin-top:10px;font-size:25px}
+.mini-court{background:var(--court);border-top-width:4px;padding:10px 2px}
+.court{border-top:5px solid #789e99;background:var(--court);border-radius:3px}
+.court:before{border-top-color:#a3c4bf}.court.editing{box-shadow:0 0 0 2px #3478f630}
+.preview-banner{margin-top:12px}.legend{margin-top:9px}.bottom-nav{margin-top:18px}
+@media(max-width:500px){.section-title{margin-top:16px}.round-area{margin-top:0}.court-tools{gap:6px}.court-tools button{padding:0 9px}.court-tools #edit{min-width:108px}}
