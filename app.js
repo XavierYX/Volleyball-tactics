@@ -2,7 +2,7 @@ import {templateSnapshot,makeShareLink,parseShareLink,importTemplate} from './sh
 import {ROLES,PLAYER_POSITIONS,shortName,resolvePlayerPosition,POSITIONS,clone,id,createState,startMatch,roleAt,displayedPlayer,scorePoint,undoPoint,correctMatch,checkFormation,substitute,returnStarter,endMatch,validateState,saveRoster} from './core.js';
 import {openStore,readState,writeState} from './storage.js';
 const $=id=>document.getElementById(id);
-let state,viewRound=0,editing=false,mode='match',saveQueue=Promise.resolve(),revision=0,storageBlocked=false,rosterDraft=[],rosterLineup=[],confirmAction,rosterReturnToSub=false,toastTimer,workerRegistration,updateRequested=false;
+let state,viewRound=0,editing=false,editSnapshot=null,mode='match',saveQueue=Promise.resolve(),revision=0,storageBlocked=false,rosterDraft=[],rosterLineup=[],confirmAction,rosterReturnToSub=false,toastTimer,workerRegistration,updateRequested=false;
 function el(tag,props={},...children){const e=document.createElement(tag);for(const [k,v]of Object.entries(props)){if(k==='text')e.textContent=v;else if(k==='class')e.className=v;else e.setAttribute(k,v)}for(const c of children)e.append(c);return e}
 const playerName=pid=>state.players.find(p=>p.id===pid)?.name||'未安排';
 function toast(message){clearTimeout(toastTimer);$('toast').textContent=message;$('toast').hidden=false;toastTimer=setTimeout(()=>$('toast').hidden=true,2800)}
@@ -14,24 +14,25 @@ function save(){
 }
 function active(){return state.match||{lineup:state.lineup,formations:state.formations,round:viewRound,score:[0,0],serving:false};}
 function formations(){return mode==='default'?state.formations:active().formations;}
-function finishEditing(){if(editing){editing=false;save();}}
+function finishEditing(){if(editing){editing=false;editSnapshot=null;save();render();}}
 function render(){
   const m=active(),hasMatch=!!state.match,preview=hasMatch&&viewRound!==m.round;
   $('welcome').hidden=hasMatch;
   $('scoreboard').hidden=!hasMatch;
   $('exit').hidden=!hasMatch;
-  $('match-caption').textContent=hasMatch?`当前 R${m.round+1}`:'默认站位';
+  $('device').classList.toggle('in-match',hasMatch);
+  $('match-caption').textContent=hasMatch?`R${m.round+1}`:'';
   $('team-us').textContent=hasMatch?m.teams[0]:'我方';$('team-them').textContent=hasMatch?m.teams[1]:'对方';
   $('score-us').textContent=String(m.score[0]).padStart(2,'0');$('score-them').textContent=String(m.score[1]).padStart(2,'0');
   const canScore=hasMatch&&!editing&&!preview&&mode==='match';
   for(const side of ['us','them']){const index=side==='us'?0:1;$('add-'+side).disabled=!canScore;$('minus-'+side).disabled=!canScore||m.score[index]===0;}
-  $('undo').disabled=!hasMatch||!m.history.length||editing||mode!=='match';
-  $('correct').disabled=!hasMatch||editing;$('exit').disabled=editing;$('substitute').hidden=!hasMatch; $('substitute').disabled=!hasMatch||editing||preview||mode!=='match';
+  $('undo').disabled=!hasMatch||!m.history.length||editing||preview||mode!=='match';
+  $('correct').disabled=!hasMatch||editing;$('exit').disabled=editing;$('substitute').hidden=!hasMatch||editing; $('substitute').disabled=!hasMatch||editing||preview||mode!=='match';
   const server=hasMatch?playerName(m.lineup[roleAt(1,m.round)]):'';
   $('serve-label').textContent=!hasMatch?'未开始':m.serving?`我方发球 · ${server}`:'对方发球 · 我方接发';
-  $('court-heading').textContent=!hasMatch?'默认接发阵型':m.serving?'本轮接发预览':'接发站位';
-  $('preview-banner').hidden=!preview;
-  $('preview-banner').textContent=`预览 R${viewRound+1} · 当前 R${m.round+1}`;
+  $('court-heading').textContent=!hasMatch?'默认接发阵型':preview?`R${viewRound+1} 接发预览`:m.serving?'接发预览':'接发站位';
+  $('preview-banner').hidden=!preview&&!editing;
+  $('preview-copy').textContent=editing?`调整 R${viewRound+1} 站位`:`查看 R${viewRound+1} · 比赛 R${m.round+1}`;
   $('players').replaceChildren();$('mini-court').replaceChildren();
   for(const p of POSITIONS){
     const {player,role,libero,back}=displayedPlayer(state,m,p,viewRound);
@@ -44,18 +45,18 @@ function render(){
   }
   $('rounds').replaceChildren();
   for(let i=0;i<6;i++){
-    const b=el('button',{class:'round','aria-pressed':String(i===viewRound),'aria-label':`查看 R${i+1}`},document.createTextNode('R'+(i+1)),el('small',{text:hasMatch&&i===m.round?'当前':''}));
-    b.onclick=()=>{finishEditing();viewRound=i;render()};$('rounds').append(b);
+    const b=el('button',{class:'round','aria-pressed':String(i===viewRound),'aria-label':`查看 R${i+1}${hasMatch&&i===m.round?'，比赛当前轮':''}`},document.createTextNode('R'+(i+1)),el('small',{text:hasMatch&&i===m.round?'当前':''}));
+    b.onclick=()=>{finishEditing();viewRound=i;render();$('rounds').children[i].focus({preventScroll:true});};$('rounds').append(b);
   }
   $('mini-round').replaceChildren(document.createTextNode('R'+(viewRound+1)),el('small',{text:hasMatch?(preview?'预览轮次':'当前轮次'):'默认轮次'}));
-  $('round-label').textContent=preview?`查看轮次 · 当前 R${m.round+1}`:'当前轮次';
+  $('round-label').textContent=preview?'查看轮次':'当前轮次';
   $('rounds').setAttribute('aria-label','选择查看轮次');
-  $('return-current').hidden=!preview;$('return-current').textContent=`返回当前轮 R${m.round+1}`;
-  $('court').classList.toggle('editing',editing);$('edit').textContent=editing?'完成并保存站位':'调整站位';
+  $('return-current').hidden=!preview||editing;$('return-current').textContent=`返回 R${m.round+1} 记分`;
+  $('court').classList.toggle('editing',editing);$('edit').textContent=editing?'完成':'调整站位';$('cancel-edit').hidden=!editing;
   $('edit').setAttribute('aria-pressed',String(editing));
   $('restore-round').hidden=!editing;
   $('restore-round').textContent=mode==='default'?'本轮恢复规整站位':'恢复本轮默认';
-  $('nav-match').classList.toggle('active',hasMatch&&mode==='match');$('nav-default').classList.toggle('active',!hasMatch);$('nav-default').disabled=hasMatch;
+
   updateGeometry();
 }
 function updateGeometry(){
@@ -64,16 +65,16 @@ function updateGeometry(){
     const line=$(name+'-link');line.setAttribute('points',positions.map(p=>coords[p].join(',')).join(' '));line.style.stroke=positions.some(p=>bad.has(p))?'#e45568':color;
   }
   document.querySelectorAll('.player').forEach(b=>{const p=+b.dataset.position;b.style.left=coords[p][0]+'%';b.style.top=coords[p][1]+'%';b.classList.toggle('invalid',bad.has(p));});
-  $('valid-status').textContent=errors.length?'站位关系需调整':'站位关系正确';$('valid-status').classList.toggle('error',!!errors.length);
+  $('valid-status').textContent=errors.length?'站位需调整':'站位正确';$('valid-status').classList.toggle('error',!!errors.length);
   $('relation-errors').textContent=errors.map(e=>e.message).join('；');$('relation-errors').hidden=!errors.length;
 }
 function startDrag(e){
   if(!editing)return;e.preventDefault();const b=e.currentTarget,p=+b.dataset.position,start=[e.clientX,e.clientY],origin=[...formations()[viewRound][p]],rect=$('court').getBoundingClientRect();b.setPointerCapture(e.pointerId);
   const move=event=>{formations()[viewRound][p]=[Math.max(9,Math.min(91,origin[0]+(event.clientX-start[0])/rect.width*100)),Math.max(8,Math.min(92,origin[1]+(event.clientY-start[1])/rect.height*100))];updateGeometry();};
-  const stop=()=>{b.removeEventListener('pointermove',move);b.removeEventListener('pointerup',stop);b.removeEventListener('pointercancel',stop);save();};
+  const stop=()=>{b.removeEventListener('pointermove',move);b.removeEventListener('pointerup',stop);b.removeEventListener('pointercancel',stop);};
   b.addEventListener('pointermove',move);b.addEventListener('pointerup',stop);b.addEventListener('pointercancel',stop);
 }
-function moveByKeyboard(e,p){if(!editing||!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key))return;e.preventDefault();const [x,y]=formations()[viewRound][p];formations()[viewRound][p]=[Math.max(9,Math.min(91,x+(e.key==='ArrowRight'?1:e.key==='ArrowLeft'?-1:0))),Math.max(8,Math.min(92,y+(e.key==='ArrowDown'?1:e.key==='ArrowUp'?-1:0)))];updateGeometry();save();}
+function moveByKeyboard(e,p){if(!editing||!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key))return;e.preventDefault();const [x,y]=formations()[viewRound][p];formations()[viewRound][p]=[Math.max(9,Math.min(91,x+(e.key==='ArrowRight'?1:e.key==='ArrowLeft'?-1:0))),Math.max(8,Math.min(92,y+(e.key==='ArrowDown'?1:e.key==='ArrowUp'?-1:0)))];updateGeometry();}
 function run(action){try{action();save();render();}catch(e){toast(e.message)}}
 function selectOptions(select,options,value){select.replaceChildren(...options.map(o=>el('option',{value:o.value,text:o.label})));if(value!==undefined)select.value=String(value);}
 function roundOptions(select,value){selectOptions(select,Array.from({length:6},(_,i)=>({value:i,label:'R'+(i+1)})),value)}
@@ -88,12 +89,11 @@ $('setup-form').onsubmit=e=>{e.preventDefault();try{startMatch(state,{lineup:Arr
 for(const [side,team]of [['us',0],['them',1]])for(const [prefix,delta]of [['add',1],['minus',-1]])$(prefix+'-'+side).onclick=()=>run(()=>{if(!state.match||editing||viewRound!==state.match.round)return;scorePoint(state.match,team,delta);viewRound=state.match.round;});
 $('undo').onclick=()=>run(()=>{undoPoint(state.match);viewRound=state.match.round;});
 $('return-current').onclick=()=>{finishEditing();viewRound=state.match.round;mode='match';render()};
-$('edit').onclick=()=>{if(editing)finishEditing();else editing=true;render()};
+$('edit').onclick=()=>{if(editing)finishEditing();else{editSnapshot=clone(formations()[viewRound]);editing=true;}render();$('edit').focus({preventScroll:true});};
+$('cancel-edit').onclick=()=>{if(!editing)return;formations()[viewRound]=clone(editSnapshot);editing=false;editSnapshot=null;render();$('edit').focus({preventScroll:true});};
 $('correct').onclick=()=>{const m=state.match;$('correct-us').value=m.score[0];$('correct-them').value=m.score[1];roundOptions($('correct-round'),m.round);$('correct-serve').value=m.serving?'us':'them';$('correct-error').textContent='';$('correct-dialog').showModal();};
 $('correct-form').onsubmit=e=>{e.preventDefault();try{correctMatch(state.match,{score:[+$('correct-us').value,+$('correct-them').value],round:+$('correct-round').value,serving:$('correct-serve').value==='us'});viewRound=state.match.round;$('correct-dialog').close();save();render();}catch(err){$('correct-error').textContent=err.message}};
-$('nav-match').onclick=()=>{finishEditing();mode=state.match?'match':'default';viewRound=state.match?.round||0;render()};
-$('nav-default').onclick=()=>{finishEditing();if(state.match){toast('比赛中请调整本场阵型，退出时可选择覆盖默认阵型。');return;}mode='default';viewRound=0;render()};
-$('restore-round').onclick=()=>{if(!editing)return;confirm(`确认恢复 R${viewRound+1} 的${mode==='default'?'规整站位':'默认站位'}？本轮调整将被替换。`,()=>run(()=>{formations()[viewRound]=clone(mode==='default'?{1:[79,74],2:[79,26],3:[50,26],4:[21,26],5:[21,74],6:[50,74]}:state.formations[viewRound]);}));};
+$('restore-round').onclick=()=>{if(!editing)return;confirm(`确认恢复 R${viewRound+1} 的${mode==='default'?'规整站位':'默认站位'}？本轮调整将被替换。`,()=>{formations()[viewRound]=clone(mode==='default'?{1:[79,74],2:[79,26],3:[50,26],4:[21,26],5:[21,74],6:[50,74]}:state.formations[viewRound]);render();});};
 $('exit').onclick=()=>{finishEditing();$('exit-dialog').showModal()};
 for(const [button,overwrite]of [['exit-save',true],['exit-discard',false]])$(button).onclick=()=>run(()=>{endMatch(state,overwrite);viewRound=0;mode='default';$('exit-dialog').close();toast(overwrite?'已保存默认六轮站位':'已退出，默认站位保持不变');});
 function referencedIds(){return new Set([...state.lineup,...(state.match?[...state.match.lineup,...state.match.originalLineup,...state.match.substitutions.flatMap(s=>[s.from,s.to])]:[])].filter(Boolean));}
