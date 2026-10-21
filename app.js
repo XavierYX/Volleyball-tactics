@@ -5,7 +5,7 @@ import {templateSnapshot,makeShareLink,parseShareLink,importTemplate} from './sh
 import {ROLES,PLAYER_POSITIONS,shortName,resolvePlayerPosition,POSITIONS,clone,id,createState,startMatch,roleAt,displayedPlayer,scorePoint,undoPoint,correctMatch,checkFormation,positionRelations,substitute,returnStarter,endMatch,validateState,saveRoster,migrateLineups,syncLineup,createLineup,selectLineup,renameLineup,deleteLineup,nextLineupName} from './core.js';
 import {openStore,readState,writeState} from './storage.js';
 const $=id=>document.getElementById(id);
-let activePosition=null,dragCleanup=null;
+let activePosition=null,dragCleanup=null,formationFrame=0;
 let state,viewRound=0,editing=false,editSnapshot=null,mode='match',saveQueue=Promise.resolve(),revision=0,storageBlocked=false,rosterDraft=[],rosterLineup=[],rosterLiberoPlan=[],confirmAction,rosterReturnToSub=false,toastTimer,workerRegistration,updateRequested=false,checkForAppUpdate=async()=>{};
 function el(tag,props={},...children){const e=document.createElement(tag);for(const [k,v]of Object.entries(props)){if(k==='text')e.textContent=v;else if(k==='class')e.className=v;else e.setAttribute(k,v)}for(const c of children)e.append(c);return e}
 const playerName=pid=>state.players.find(p=>p.id===pid)?.name||'未安排';
@@ -19,7 +19,35 @@ function save(){
 function active(){return state.match||{lineup:state.lineup,formations:state.formations,round:viewRound,score:[0,0],serving:false};}
 function formations(){return mode==='default'?state.formations:active().formations;}
 function finishEditing(){if(editing){editing=false;editSnapshot=null;save();render();}}
+const reduceMotion=()=>window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function softenChange(node){
+  node.getAnimations().forEach(animation=>animation.cancel());
+  if(!reduceMotion())node.animate([{opacity:.6,transform:'translateY(2px)'},{opacity:1,transform:'translateY(0)'}],{duration:180,easing:'cubic-bezier(.2,.8,.2,1)'});
+}
+function paintFormation(coords){
+  for(const b of $('players').children){const p=+b.dataset.position;b.style.left=coords[p][0]+'%';b.style.top=coords[p][1]+'%';}
+  for(const [name,positions]of [['front',[4,3,2]],['back',[5,6,1]]])$(name+'-link').setAttribute('points',positions.map(p=>coords[p].join(',')).join(' '));
+}
+function softenFormation(previous){
+  if(editing||reduceMotion()||!previous.size)return;
+  const target=clone(formations()[viewRound]),from={};
+  for(const b of $('players').children){const p=+b.dataset.position;from[p]=previous.get(b.dataset.playerId)||target[p];}
+  const paint=progress=>{
+    const eased=1-(1-progress)**3;
+    paintFormation(Object.fromEntries(POSITIONS.map(p=>[p,target[p].map((value,axis)=>from[p][axis]+(value-from[p][axis])*eased)])));
+  };
+  const started=performance.now();paint(0);
+  const step=now=>{
+    const progress=reduceMotion()?1:Math.max(0,Math.min(1,(now-started)/180));paint(progress);
+    formationFrame=progress<1?requestAnimationFrame(step):0;
+  };
+  formationFrame=requestAnimationFrame(step);
+  softenChange($('mini-court'));softenChange($('mini-round'));
+}
 function render(){
+  cancelAnimationFrame(formationFrame);formationFrame=0;
+  const previousPlayers=new Map([...$('players').children].map(b=>[b.dataset.playerId,[parseFloat(b.style.left),parseFloat(b.style.top)]]));
+  const roundChanged=$('court').dataset.round!==String(viewRound),oldScores=[$('score-us').textContent,$('score-them').textContent];
   clearRelationshipFocus(false);
   const m=active(),hasMatch=!!state.match,preview=hasMatch&&viewRound!==m.round;
   selectOptions($('lineup-select'),state.lineupSets.map(x=>({value:x.id,label:x.name})),state.activeLineupId);
@@ -44,7 +72,7 @@ function render(){
   for(const p of POSITIONS){
     const {player,role,libero,back}=displayedPlayer(state,m,p,viewRound);
     const full=player?.name||'未安排',short=shortName(player?.name);
-    const b=el('button',{class:'player'+(back?' back':'')+(libero?' libero':''),'data-position':p,'aria-label':`${full}，${libero?'自由人替换'+ROLES[role]:ROLES[role]}，${back?'后排':'前排'}，${p}号位`,title:`${full} · ${libero?'自由人（替换'+ROLES[role]+'）':ROLES[role]}`},el('b',{text:short}));
+    const b=el('button',{class:'player'+(back?' back':'')+(libero?' libero':''),'data-position':p,'data-player-id':player?.id||'role-'+role,'aria-label':`${full}，${libero?'自由人替换'+ROLES[role]:ROLES[role]}，${back?'后排':'前排'}，${p}号位`,title:`${full} · ${libero?'自由人（替换'+ROLES[role]+'）':ROLES[role]}`},el('b',{text:short}));
     b.disabled=!editing;b.addEventListener('pointerdown',startDrag);b.addEventListener('keydown',e=>moveByKeyboard(e,p));b.addEventListener('blur',()=>{if(!dragCleanup&&activePosition===p)clearRelationshipFocus();});$('players').append(b);
     const original=state.players.find(x=>x.id===m.lineup[role]);
     const cell=el('div',{class:'mini-cell'},el('i',{text:p}),el('span',{text:ROLES[role]}));
@@ -71,6 +99,9 @@ function render(){
   $('libero-status').textContent=!m.lineup[6]?'未安排自由人':hasMatch&&!preview&&!m.libero.verified?'自由人状态待确认':selected===null?'自由人场下':`自由人替换${ROLES[selected]}`;
   $('libero-open').disabled=!m.lineup[6]||preview;
   updateGeometry();
+  $('court').dataset.round=String(viewRound);
+  if(roundChanged)softenFormation(previousPlayers);
+  for(const [i,side]of ['us','them'].entries())if(hasMatch&&oldScores[i]!==$('score-'+side).textContent)softenChange($('score-'+side));
 }
 function clearRelationshipFocus(update=true){
   const cleanup=dragCleanup;dragCleanup=null;cleanup?.();activePosition=null;
