@@ -1,5 +1,5 @@
-const CACHE='lunjian-v11';
-const SHELL=['./','./index.html','./styles.css','./app.js','./core.js','./sharing.js','./storage.js','./manifest.webmanifest','./icons/icon-192.png','./icons/icon-512.png','./icons/apple-touch-icon.png'];
+const CACHE='lunjian-v12';
+const SHELL=['./','./index.html','./styles.css','./app.js','./core.js','./sharing.js','./storage.js','./manifest.webmanifest','./icons/app-icon-192.png','./icons/app-icon-512.png','./icons/apple-touch-icon-180.png'];
 const BASE=new URL('./',self.location.href);
 const URLS=new Set(SHELL.map(p=>new URL(p,BASE).href));
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL))));
