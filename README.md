@@ -32,7 +32,7 @@
     <th>首发角色（局部）</th>
   </tr>
   <tr>
-    <td valign="top"><a href="docs/showcase/receive.png"><img src="docs/showcase/receive.png" alt="作者阵容的接发站位，显示前后排虚线及标准轮转小图" width="250" /></a></td>
+    <td valign="top"><a href="docs/showcase/receive.png"><img src="docs/showcase/receive.png" alt="作者阵容的接发站位，显示前后排半透明连线及标准轮转小图" width="250" /></a></td>
     <td valign="top"><a href="docs/showcase/match.png"><img src="docs/showcase/match.png" alt="比赛界面，同时显示比分、发球方、轮次和接发阵型" width="250" /></a></td>
     <td valign="top"><a href="docs/showcase/roster.png"><img src="docs/showcase/roster.png" alt="首发角色分配与自由人替换角色设置" width="250" /></a></td>
   </tr>
@@ -41,7 +41,7 @@
 | 功能 | 可以做什么 |
 | --- | --- |
 | 六轮接发阵型 | 从规整的前三人、后三人开始，拖动队员圆圈，分别保存六轮站位。 |
-| 直观校对 | 用颜色与虚线区分前后排，用标准轮转小图核对角色；站位关系异常时给出红色提示。 |
+| 直观校对 | 用颜色与半透明实线区分前后排；拖动队员时显示相邻位置关系虚线，异常关系实时标红。标准轮转小图用于核对角色。 |
 | 比赛记分与轮转 | 双方加减分、撤销、手动校正比分和轮次；根据记分顺序跟踪发球权及我方轮转。 |
 | 多套阵容 | 共用一份队员名单，分别保存首发、六轮站位与自由人预设；支持新建、复制、重命名。 |
 | 临场调整 | 修改本场站位、普通换人／换回；手动选择自由人是否上场及替换角色，检查后排身份与替换间隔。 |

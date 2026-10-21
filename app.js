@@ -2,9 +2,10 @@ import {activateLatest} from './updates.js';
 import {DEFAULT_LIBERO_ROLES,defaultLiberoChoices,migrateLiberoState,eligibleLiberoRoles,rolePosition,liberoReplacementError,setLibero,calibrateLibero} from './libero.js';
 import {shortenLink} from './shortlinks.js';
 import {templateSnapshot,makeShareLink,parseShareLink,importTemplate} from './sharing.js';
-import {ROLES,PLAYER_POSITIONS,shortName,resolvePlayerPosition,POSITIONS,clone,id,createState,startMatch,roleAt,displayedPlayer,scorePoint,undoPoint,correctMatch,checkFormation,substitute,returnStarter,endMatch,validateState,saveRoster,migrateLineups,syncLineup,createLineup,selectLineup,renameLineup,deleteLineup,nextLineupName} from './core.js';
+import {ROLES,PLAYER_POSITIONS,shortName,resolvePlayerPosition,POSITIONS,clone,id,createState,startMatch,roleAt,displayedPlayer,scorePoint,undoPoint,correctMatch,checkFormation,positionRelations,substitute,returnStarter,endMatch,validateState,saveRoster,migrateLineups,syncLineup,createLineup,selectLineup,renameLineup,deleteLineup,nextLineupName} from './core.js';
 import {openStore,readState,writeState} from './storage.js';
 const $=id=>document.getElementById(id);
+let activePosition=null,dragCleanup=null;
 let state,viewRound=0,editing=false,editSnapshot=null,mode='match',saveQueue=Promise.resolve(),revision=0,storageBlocked=false,rosterDraft=[],rosterLineup=[],rosterLiberoPlan=[],confirmAction,rosterReturnToSub=false,toastTimer,workerRegistration,updateRequested=false,checkForAppUpdate=async()=>{};
 function el(tag,props={},...children){const e=document.createElement(tag);for(const [k,v]of Object.entries(props)){if(k==='text')e.textContent=v;else if(k==='class')e.className=v;else e.setAttribute(k,v)}for(const c of children)e.append(c);return e}
 const playerName=pid=>state.players.find(p=>p.id===pid)?.name||'未安排';
@@ -19,6 +20,7 @@ function active(){return state.match||{lineup:state.lineup,formations:state.form
 function formations(){return mode==='default'?state.formations:active().formations;}
 function finishEditing(){if(editing){editing=false;editSnapshot=null;save();render();}}
 function render(){
+  clearRelationshipFocus(false);
   const m=active(),hasMatch=!!state.match,preview=hasMatch&&viewRound!==m.round;
   selectOptions($('lineup-select'),state.lineupSets.map(x=>({value:x.id,label:x.name})),state.activeLineupId);
   $('lineup-select').disabled=hasMatch||editing;$('manage-lineups').disabled=hasMatch||editing;
@@ -36,14 +38,14 @@ function render(){
   const server=hasMatch?playerName(m.lineup[roleAt(1,m.round)]):'';
   $('serve-label').textContent=!hasMatch?'未开始':m.serving?`我方发球 · ${server}`:'对方发球 · 我方接发';
   $('court-heading').textContent=!hasMatch?'接发阵型':preview?`R${viewRound+1} 接发预览`:m.serving?'接发预览':'接发站位';
-  $('preview-banner').hidden=!preview&&!editing;
+  $('preview-banner').hidden=!preview||editing;
   $('preview-copy').textContent=editing?`调整 R${viewRound+1} 站位`:`查看 R${viewRound+1} · 比赛 R${m.round+1}`;
   $('players').replaceChildren();$('mini-court').replaceChildren();
   for(const p of POSITIONS){
     const {player,role,libero,back}=displayedPlayer(state,m,p,viewRound);
     const full=player?.name||'未安排',short=shortName(player?.name);
     const b=el('button',{class:'player'+(back?' back':'')+(libero?' libero':''),'data-position':p,'aria-label':`${full}，${libero?'自由人替换'+ROLES[role]:ROLES[role]}，${back?'后排':'前排'}，${p}号位`,title:`${full} · ${libero?'自由人（替换'+ROLES[role]+'）':ROLES[role]}`},el('b',{text:short}));
-    b.disabled=!editing;b.addEventListener('pointerdown',startDrag);b.addEventListener('keydown',e=>moveByKeyboard(e,p));$('players').append(b);
+    b.disabled=!editing;b.addEventListener('pointerdown',startDrag);b.addEventListener('keydown',e=>moveByKeyboard(e,p));b.addEventListener('blur',()=>{if(!dragCleanup&&activePosition===p)clearRelationshipFocus();});$('players').append(b);
     const original=state.players.find(x=>x.id===m.lineup[role]);
     const cell=el('div',{class:'mini-cell'},el('i',{text:p}),el('span',{text:ROLES[role]}));
     cell.title=libero?`${full}替换${original?.name||ROLES[role]}`:full;$('mini-court').append(cell);
@@ -57,7 +59,7 @@ function render(){
   $('round-label').textContent=preview?'查看轮次':'当前轮次';
   $('rounds').setAttribute('aria-label','选择查看轮次');
   $('return-current').hidden=!preview||editing;$('return-current').textContent=`返回 R${m.round+1} 记分`;
-  $('court').classList.toggle('editing',editing);$('edit').textContent=editing?'完成':'调整站位';$('cancel-edit').hidden=!editing;
+  $('court').classList.toggle('editing',editing);$('edit-label').textContent=editing?'完成':'调整站位';$('edit-toolbar').hidden=!editing;$('cancel-edit').hidden=!editing;
   $('edit').setAttribute('aria-pressed',String(editing));
   $('restore-round').hidden=!editing;
   $('restore-round').textContent=mode==='default'?'本轮恢复规整站位':'恢复本轮已存站位';
@@ -68,22 +70,41 @@ function render(){
   $('libero-open').disabled=!m.lineup[6]||preview;
   updateGeometry();
 }
+function clearRelationshipFocus(update=true){
+  const cleanup=dragCleanup;dragCleanup=null;cleanup?.();activePosition=null;
+  if(update)updateGeometry();
+}
 function updateGeometry(){
   const coords=formations()[viewRound],errors=checkFormation(coords),bad=new Set(errors.flatMap(e=>e.positions));
+  const relations=activePosition===null?[]:positionRelations(coords,activePosition),neighbors=new Set(relations.map(r=>r.neighbor));
+  $('court').classList.toggle('has-active-player',activePosition!==null);
   for(const [name,positions,color]of [['front',[4,3,2],'var(--front)'],['back',[5,6,1],'var(--back)']]){
-    const line=$(name+'-link');line.setAttribute('points',positions.map(p=>coords[p].join(',')).join(' '));line.style.stroke=positions.some(p=>bad.has(p))?'#e45568':color;
+    const line=$(name+'-link');line.setAttribute('points',positions.map(p=>coords[p].join(',')).join(' '));line.style.stroke=positions.some(p=>bad.has(p))?'var(--error)':color;
   }
-  document.querySelectorAll('.player').forEach(b=>{const p=+b.dataset.position;b.style.left=coords[p][0]+'%';b.style.top=coords[p][1]+'%';b.classList.toggle('invalid',bad.has(p));});
+  $('relationship-links').replaceChildren(...relations.map(r=>{
+    const line=document.createElementNS('http://www.w3.org/2000/svg','line');
+    for(const [key,value]of Object.entries({x1:coords[r.from][0],y1:coords[r.from][1],x2:coords[r.to][0],y2:coords[r.to][1],class:'relation-link'+(r.valid?'':' invalid'),'data-from':r.from,'data-to':r.to}))line.setAttribute(key,value);
+    line.style.stroke=r.valid?([4,3,2].includes(activePosition)?'var(--front)':'var(--back)'):'var(--error)';return line;
+  }));
+  document.querySelectorAll('.player').forEach(b=>{const p=+b.dataset.position;b.style.left=coords[p][0]+'%';b.style.top=coords[p][1]+'%';b.classList.toggle('invalid',bad.has(p));b.classList.toggle('selected-player',activePosition===p);b.classList.toggle('related-player',neighbors.has(p));b.classList.toggle('unrelated-player',activePosition!==null&&activePosition!==p&&!neighbors.has(p));});
   $('valid-status').textContent=errors.length?'站位需调整':'站位正确';$('valid-status').classList.toggle('error',!!errors.length);
   $('relation-errors').textContent=errors.map(e=>e.message).join('；');$('relation-errors').hidden=!errors.length;
 }
 function startDrag(e){
-  if(!editing)return;e.preventDefault();const b=e.currentTarget,p=+b.dataset.position,start=[e.clientX,e.clientY],origin=[...formations()[viewRound][p]],rect=$('court').getBoundingClientRect();b.setPointerCapture(e.pointerId);
-  const move=event=>{formations()[viewRound][p]=[Math.max(9,Math.min(91,origin[0]+(event.clientX-start[0])/rect.width*100)),Math.max(8,Math.min(92,origin[1]+(event.clientY-start[1])/rect.height*100))];updateGeometry();};
-  const stop=()=>{b.removeEventListener('pointermove',move);b.removeEventListener('pointerup',stop);b.removeEventListener('pointercancel',stop);};
-  b.addEventListener('pointermove',move);b.addEventListener('pointerup',stop);b.addEventListener('pointercancel',stop);
+  if(!editing||e.isPrimary===false||e.button!==0)return;
+  e.preventDefault();clearRelationshipFocus(false);
+  const b=e.currentTarget,p=+b.dataset.position,start=[e.clientX,e.clientY],origin=[...formations()[viewRound][p]],rect=$('court').getBoundingClientRect();
+  activePosition=p;b.setPointerCapture(e.pointerId);updateGeometry();
+  const move=event=>{if(event.pointerId!==e.pointerId)return;formations()[viewRound][p]=[Math.max(9,Math.min(91,origin[0]+(event.clientX-start[0])/rect.width*100)),Math.max(8,Math.min(92,origin[1]+(event.clientY-start[1])/rect.height*100))];updateGeometry();};
+  const stop=event=>{if(event.pointerId===e.pointerId)clearRelationshipFocus();};
+  dragCleanup=()=>{b.removeEventListener('pointermove',move);for(const type of ['pointerup','pointercancel','lostpointercapture'])b.removeEventListener(type,stop);if(b.hasPointerCapture(e.pointerId))b.releasePointerCapture(e.pointerId);};
+  b.addEventListener('pointermove',move);for(const type of ['pointerup','pointercancel','lostpointercapture'])b.addEventListener(type,stop);
 }
-function moveByKeyboard(e,p){if(!editing||!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key))return;e.preventDefault();const [x,y]=formations()[viewRound][p];formations()[viewRound][p]=[Math.max(9,Math.min(91,x+(e.key==='ArrowRight'?1:e.key==='ArrowLeft'?-1:0))),Math.max(8,Math.min(92,y+(e.key==='ArrowDown'?1:e.key==='ArrowUp'?-1:0)))];updateGeometry();}
+function moveByKeyboard(e,p){
+  if(!editing||!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key))return;
+  e.preventDefault();activePosition=p;const [x,y]=formations()[viewRound][p];
+  formations()[viewRound][p]=[Math.max(9,Math.min(91,x+(e.key==='ArrowRight'?1:e.key==='ArrowLeft'?-1:0))),Math.max(8,Math.min(92,y+(e.key==='ArrowDown'?1:e.key==='ArrowUp'?-1:0)))];updateGeometry();
+}
 function run(action){try{action();save();render();}catch(e){toast(e.message)}}
 function selectOptions(select,options,value){select.replaceChildren(...options.map(o=>el('option',{value:o.value,text:o.label})));if(value!==undefined)select.value=String(value);}
 function roundOptions(select,value){selectOptions(select,Array.from({length:6},(_,i)=>({value:i,label:'R'+(i+1)})),value)}

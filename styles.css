@@ -60,8 +60,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .scoreboard-tools button { min-height: 44px; padding: 0 5px; font-size: 12px; }
 .score-undo { color: var(--accent); font-weight: 550; }
 .scoreboard-tools button:disabled { color: #a6aebb; }
-.section-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 8px; }
+.section-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 12px; }
+.court-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
 .section-title h2 { margin: 0; font-size: 16px; font-weight: 650; }
+#edit { display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex-shrink: 0; min-height: 44px; padding: 0 12px; border: 0; border-radius: 14px; background: var(--soft); color: #275abd; font-size: 12px; font-weight: 600; }
+#edit svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+#edit .done-icon { display: none; }
+#edit[aria-pressed=true] { background: var(--accent); color: white; }
+#edit[aria-pressed=true] .edit-icon { display: none; }
+#edit[aria-pressed=true] .done-icon { display: block; }
 .status { flex-shrink: 0; padding: 4px 8px; border-radius: 7px; background: #e9eef5; color: #4a5c73; font-size: 11px; white-space: nowrap; }
 .status.error { background: #ffedf0; color: var(--error); }
 .round-area { margin-bottom: 8px; }
@@ -71,18 +78,20 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .round[aria-pressed=true] { border-color: #a7c1f2; background: var(--soft); color: #214eaa; }
 .round small { display: block; margin-top: 2px; color: #214eaa; font-size: 10px; font-weight: 450; }
 .round small:empty { display: none; }
-.court-tools { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
-.court-tools button { min-height: 44px; padding: 0 10px; border-radius: 10px; font-size: 12px; }
-#edit { margin-left: auto; min-width: 108px; border: 1px solid #becfed; background: var(--card); color: #275abd; }
-#edit[aria-pressed=true] { min-width: 72px; border-color: var(--accent); background: var(--accent); color: white; }
-#restore-round { background: #e8edf4; color: #526175; }
-#cancel-edit { padding: 0 8px; color: var(--muted); }
+.court-tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 10px; padding: 0 2px; }
+.court-tools button { min-height: 44px; padding: 0 8px; border-radius: 10px; font-size: 12px; background: transparent; color: var(--muted); }
+#restore-round { order: 1; color: #275abd; }
+.personnel-tools { display: flex; align-items: center; gap: 6px; }
+.personnel-tools button { font-size: 12px; padding: 0 9px; }
 .court-layout { display: grid; grid-template-columns: minmax(0, 1fr) 80px; align-items: start; gap: 10px; }
 .court { position: relative; width: 100%; aspect-ratio: 1; overflow: hidden; isolation: isolate; border: 1.5px solid var(--court-line); border-top: 5px solid var(--net); border-radius: 3px; background: var(--court); }
 .court::before { content: ""; position: absolute; left: 0; right: 0; top: 33.333%; border-top: 1px solid var(--court-line); pointer-events: none; }
 .court.editing { box-shadow: 0 0 0 2px #2864df24; }
 .links { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
-.links polyline { fill: none; stroke-width: .7; stroke-dasharray: 2 2; opacity: .58; }
+.links polyline { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; opacity: .32; transition: opacity 120ms ease; }
+.has-active-player .links polyline { opacity: .1; }
+.relation-link { stroke-width: 1.7; stroke-dasharray: 4 5; stroke-linecap: round; vector-effect: non-scaling-stroke; opacity: .8; }
+.relation-link.invalid { opacity: 1; }
 .player { position: absolute; z-index: 2; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; min-height: 30px; padding: 0; border: 1.5px solid var(--front); border-radius: 50%; background: var(--card); color: var(--front); line-height: 1; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
 .player:disabled { color: var(--front); cursor: default; }
 .player:active:not(:disabled) { transform: translate(-50%, -50%); }
@@ -93,6 +102,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .player.invalid { border: 2px solid #dc425b; box-shadow: 0 0 0 3px #dc425b1a; }
 .editing .player { touch-action: none; cursor: grab; box-shadow: 0 0 0 3px #ffffff90; }
 .editing .player:active { cursor: grabbing; }
+.editing .player { transition: box-shadow 120ms ease, opacity 120ms ease, transform 120ms ease; }
+.editing .player.related-player { box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 15%, transparent); }
+.editing .player.selected-player { z-index: 3; transform: translate(-50%, -50%) scale(1.12); box-shadow: 0 0 0 6px color-mix(in srgb, var(--front) 15%, transparent); }
+.editing .player.selected-player.back { box-shadow: 0 0 0 6px color-mix(in srgb, var(--back) 15%, transparent); }
+.editing .player.invalid { box-shadow: 0 0 0 4px #dc425b24; }
+.editing .player.selected-player.invalid { box-shadow: 0 0 0 6px #dc425b24; }
+.editing .player.unrelated-player { opacity: .38; }
+@media (prefers-reduced-motion: reduce) { .editing .player, .links polyline { transition: none; } }
 .player:focus-visible { outline: 3px solid #182e4d; outline-offset: 3px; }
 .legend { display: flex; gap: 12px; margin-top: 9px; color: var(--muted); font-size: 11px; }
 .legend span { display: flex; align-items: center; gap: 5px; }
@@ -155,7 +172,7 @@ textarea { min-height: 88px; padding: 11px; font-size: 16px; resize: vertical; o
 @media (max-width: 350px) {
   .app { padding-left: 10px; padding-right: 10px; }
   .header-tools button { padding: 0 7px; }
-  #edit { min-width: 96px; }
+  #edit { padding: 0 10px; }
   .court-layout { grid-template-columns: minmax(0, 1fr) 76px; }
   .roster-fields, .small-labels { grid-template-columns: minmax(0, 1fr) 96px 44px; gap: 6px; }
 }

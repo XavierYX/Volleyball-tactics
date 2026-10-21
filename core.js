@@ -66,9 +66,14 @@ export function correctMatch(match,{score,round,serving,liberoRole}) {
   if(liberoRole===undefined&&role!==null&&!eligibleLiberoRoles(next).includes(role))role=null;
   calibrateLibero(next,role,{deadBallConfirmed:true});Object.assign(match,next);
 }
+// The same ordered pairs drive center-point validation and editing guides.
+export const POSITION_RELATIONS=Object.freeze([[4,3,0],[3,2,0],[5,6,0],[6,1,0],[4,5,1],[3,6,1],[2,1,1]].map(Object.freeze));
+export function positionRelations(coords,position) {
+  return POSITION_RELATIONS.filter(([a,b])=>a===position||b===position).map(([from,to,axis])=>({from,to,axis,neighbor:from===position?to:from,valid:coords[from][axis]<coords[to][axis]}));
+}
 export function checkFormation(coords) {
   const errors=[];
-  for(const [a,b,axis] of [[4,3,0],[3,2,0],[5,6,0],[6,1,0],[4,5,1],[3,6,1],[2,1,1]]) {
+  for(const [a,b,axis] of POSITION_RELATIONS) {
     if(coords[a][axis]>=coords[b][axis])errors.push({positions:[a,b],message:axis===0?`${a}号位应在${b}号位左侧`:`${a}号位应在${b}号位前方`});
   }
   return errors;
