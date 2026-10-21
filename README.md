@@ -2,7 +2,7 @@
   <img src="icons/paizhen-mark.svg" alt="排阵图标" width="72" />
   <h1>排阵 · 排球战术板</h1>
   <p>为排球训练与比赛设计的手机战术板，也是我的一次 Vibe Coding 实践。</p>
-  <p><a href="https://xavieryx.github.io/Volleyball-tactics/">在线体验</a> · <a href="#界面与功能">功能展示</a> · <a href="#本地运行">本地运行</a></p>
+  <p><a href="https://xavieryx.github.io/Volleyball-tactics/">在线体验</a> · <a href="#界面与功能">功能展示</a></p>
 </div>
 
 ## 为什么做排阵
@@ -66,20 +66,3 @@
 原生 **HTML、CSS、JavaScript**，以静态 PWA 形式运行；使用 IndexedDB 保存本机数据，Service Worker 提供离线资源缓存，GitHub Actions 完成测试与构建，GitHub Pages 提供在线访问。
 
 图标采用深色底与蓝黄排球组合；排球线条基于 [Lucide](https://lucide.dev/icons/volleyball) 调整，授权见 [ISC License](icons/LICENSE-lucide)。
-
-## 本地运行
-
-需要 Python 3；测试和构建需要 Node.js 22 或更新版本。
-
-```sh
-python3 -m http.server 8765 --bind 127.0.0.1
-```
-
-打开 <http://127.0.0.1:8765/>。
-
-```sh
-npm test       # 核心逻辑与数据兼容性测试
-npm run build  # 生成 dist/ 静态文件
-```
-
-主要代码：`app.js` 负责界面交互，`core.js` 与 `libero.js` 处理比赛及自由人逻辑，`sharing.js` 处理阵容分享，`tests/` 保存自动化测试。
