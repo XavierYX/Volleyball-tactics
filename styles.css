@@ -88,7 +88,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .court::before { content: ""; position: absolute; left: 0; right: 0; top: 33.333%; border-top: 1px solid var(--court-line); pointer-events: none; }
 .court.editing { box-shadow: 0 0 0 2px #2864df24; }
 .links { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
-.links polyline { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; opacity: .32; transition: opacity 120ms ease; }
+.links polyline { fill: none; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; opacity: .36; transition: opacity 120ms ease; }
 .has-active-player .links polyline { opacity: .1; }
 .relation-link { stroke-width: 1.7; stroke-dasharray: 4 5; stroke-linecap: round; vector-effect: non-scaling-stroke; opacity: .8; }
 .relation-link.invalid { opacity: 1; }
@@ -100,17 +100,19 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .player.back { color: var(--back); border-color: var(--back); }
 .player.libero { background: var(--back); color: white; }
 .player.invalid { border: 2px solid #dc425b; box-shadow: 0 0 0 3px #dc425b1a; }
-.editing .player { touch-action: none; cursor: grab; box-shadow: 0 0 0 3px #ffffff90; }
+.editing .player { touch-action: none; cursor: grab; }
 .editing .player:active { cursor: grabbing; }
 .editing .player { transition: box-shadow 120ms ease, opacity 120ms ease, transform 120ms ease; }
-.editing .player.related-player { box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 15%, transparent); }
+.editing .player.related-player { box-shadow: 0 0 0 4px color-mix(in srgb, var(--front) 12%, transparent); }
+.editing .player.related-player.back { box-shadow: 0 0 0 4px color-mix(in srgb, var(--back) 12%, transparent); }
 .editing .player.selected-player { z-index: 3; transform: translate(-50%, -50%) scale(1.12); box-shadow: 0 0 0 6px color-mix(in srgb, var(--front) 15%, transparent); }
 .editing .player.selected-player.back { box-shadow: 0 0 0 6px color-mix(in srgb, var(--back) 15%, transparent); }
 .editing .player.invalid { box-shadow: 0 0 0 4px #dc425b24; }
 .editing .player.selected-player.invalid { box-shadow: 0 0 0 6px #dc425b24; }
 .editing .player.unrelated-player { opacity: .38; }
 @media (prefers-reduced-motion: reduce) { .editing .player, .links polyline { transition: none; } }
-.player:focus-visible { outline: 3px solid #182e4d; outline-offset: 3px; }
+.player:focus-visible { outline: 2px solid var(--front); outline-offset: 3px; }
+.player.back:focus-visible { outline-color: var(--back); }
 .legend { display: flex; gap: 12px; margin-top: 9px; color: var(--muted); font-size: 11px; }
 .legend span { display: flex; align-items: center; gap: 5px; }
 .legend i { display: block; width: 7px; height: 7px; border-radius: 50%; background: var(--front); }
@@ -182,3 +184,19 @@ textarea { min-height: 88px; padding: 11px; font-size: 16px; resize: vertical; o
 .lineup-bar{display:flex;align-items:center;gap:8px;margin-bottom:10px}.lineup-bar select{flex:1;min-width:0;background:var(--card);font-size:16px}.lineup-bar button{flex-shrink:0;min-height:44px;font-size:12px}.full-width{width:100%}.danger{color:var(--error)}#lineups-error{margin-top:12px}
 
 .update-link{display:block;min-height:44px;padding:12px 0;text-align:center}.app-version{text-align:center;font-size:11px!important;color:var(--muted)}
+
+/* Court controls use compact surfaces; transparent borders retain 44px touch targets. */
+.tactics-panel #edit, .tactics-panel .round, .tactics-panel .personnel-tools button {
+  min-height: 44px; border: 6px solid transparent; border-radius: 15px;
+  background-clip: padding-box; box-shadow: none;
+}
+.tactics-panel #edit { padding: 0 8px; }
+.tactics-panel .round { padding: 0; background-color: #e9edf3; border-radius: 14px; font-size: 13px; }
+.tactics-panel .round[aria-pressed=true] { background-color: #dce7fc; color: #214eaa; }
+.tactics-panel .round small { display: none; }
+.tactics-panel .rounds { gap: 0; margin: 0 -6px; }
+.tactics-panel .personnel-tools { gap: 0; margin-right: -6px; }
+.tactics-panel .personnel-tools button { padding: 0 8px; background-color: #e9edf3; font-weight: 500; }
+.tactics-panel .court-tools button { min-height: 40px; }
+.score-controls button { border: 5px solid transparent; border-radius: 14px; background-clip: padding-box; }
+.score-controls { gap: 2px; margin: 0 -5px; }
