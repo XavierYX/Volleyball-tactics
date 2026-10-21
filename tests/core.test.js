@@ -30,9 +30,15 @@ test('duplicate role selection rejects atomically; roster editing during a match
   saveRoster(s,players,bad);assert.deepEqual(s.lineup,lineup);assert.deepEqual(s.match.lineup,live);assert.equal(s.players[1].name,'新姓名');
 });
 
-test('legacy generic positions resolve from existing lineup without mutating saved matches',async()=>{
- const {resolvePlayerPosition,ROLES,shortName}=await import('../core.js');const s=game();
- const legacy=['二传','主攻','副攻','接应','主攻','副攻','自由人'];s.players.forEach((p,i)=>p.position=legacy[i]);const before=clone(s);validateState(s);
- assert.deepEqual(s.players.slice(0,6).map(p=>resolvePlayerPosition(p,s.lineup)),ROLES);assert.deepEqual(s,before);
- assert.equal(resolvePlayerPosition({id:'bench',position:'主攻'},s.lineup),'');assert.equal(shortName(' 林晓 '),'晓');assert.equal(shortName('张😀'),'😀');
+test('player positions stay generic while starting and substitution roles remain distinct',async()=>{
+ const {resolvePlayerPosition,ROLES,PLAYER_POSITIONS,shortName,saveRoster}=await import('../core.js');const s=game();
+ const generic=['二传','主攻','副攻','接应','主攻','副攻','自由人'];
+ assert.deepEqual(PLAYER_POSITIONS,['二传','主攻','副攻','接应','自由人','其他']);
+ assert.deepEqual(s.players.map(p=>p.position),generic);
+ s.players.forEach((p,i)=>p.position=[...ROLES,'自由人'][i]);const before=clone(s);validateState(s);
+ assert.deepEqual(s.players.map(p=>resolvePlayerPosition(p)),generic);assert.deepEqual(s,before);
+ const matchBefore=clone(s.match),lineupBefore=clone(s.lineup);saveRoster(s,s.players,s.lineup);
+ assert.deepEqual(s.players.map(p=>p.position),generic);assert.deepEqual(s.match,matchBefore);assert.deepEqual(s.lineup,lineupBefore);
+ assert.equal(resolvePlayerPosition({id:'bench',position:'主攻'}),'主攻');assert.equal(resolvePlayerPosition({position:'小副'}),'副攻');
+ assert.equal(shortName(' 林晓 '),'晓');assert.equal(shortName('张😀'),'😀');
 });

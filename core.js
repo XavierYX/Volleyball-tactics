@@ -1,14 +1,12 @@
 /** Pure match and rotation rules. Coordinates are percentages of our half court. */
 export const ROLES = ['二传', '大主', '小副', '接应', '小主', '大副'];
-export const PLAYER_POSITIONS=[...ROLES,'自由人','其他'];
+export const PLAYER_POSITIONS=['二传','主攻','副攻','接应','自由人','其他'];
 export const shortName=name=>Array.from(String(name??'').trim()).at(-1)||'？';
-/** Infer only legacy generic positions whose size is established by the saved lineup. */
-export function resolvePlayerPosition(player,lineup){
-  if(PLAYER_POSITIONS.includes(player.position))return player.position;
-  const role=ROLES[lineup.indexOf(player.id)];
-  if(player.position==='主攻'&&['大主','小主'].includes(role))return role;
-  if(player.position==='副攻'&&['大副','小副'].includes(role))return role;
-  return '';
+/** A player's position is independent of their assigned starting rotation role. */
+export function resolvePlayerPosition(player){
+  if(['大主','小主'].includes(player.position))return '主攻';
+  if(['大副','小副'].includes(player.position))return '副攻';
+  return PLAYER_POSITIONS.includes(player.position)?player.position:'';
 }
 export const POSITIONS = [4, 3, 2, 5, 6, 1];
 const CYCLE = [1, 6, 5, 4, 3, 2];
@@ -21,7 +19,7 @@ export function roleAt(position, round) {
   return CYCLE[(CYCLE.indexOf(position) - round + 6) % 6] - 1;
 }
 export function createState() {
-  const players = [...ROLES,'自由人'].map(name => ({id:id(),name,short:shortName(name),position:name}));
+  const players = [...ROLES,'自由人'].map(name => ({id:id(),name,short:shortName(name),position:resolvePlayerPosition({position:name})}));
   return {version:1,players,lineup:players.map(p=>p.id),formations:standardFormations(),match:null};
 }
 export function startMatch(state, config) {
@@ -95,7 +93,7 @@ function validLineup(l,players) {
 /** Reject malformed backups before replacing any local data. */
 export function validateState(s) {
   if(!s||s.version!==1||!Array.isArray(s.players)||s.players.length<6||s.players.length>200)throw Error('备份版本或队员数据不正确。');
-  if(new Set(s.players.map(p=>p.id)).size!==s.players.length||s.players.some(p=>!p||typeof p.id!=='string'||!p.id||typeof p.name!=='string'||!p.name.trim()||p.name.length>32||typeof p.short!=='string'||Array.from(p.short).length!==1||![...PLAYER_POSITIONS,'主攻','副攻'].includes(p.position)))throw Error('队员信息不完整。');
+  if(new Set(s.players.map(p=>p.id)).size!==s.players.length||s.players.some(p=>!p||typeof p.id!=='string'||!p.id||typeof p.name!=='string'||!p.name.trim()||p.name.length>32||typeof p.short!=='string'||Array.from(p.short).length!==1||![...PLAYER_POSITIONS,...ROLES].includes(p.position)))throw Error('队员信息不完整。');
   if(!validLineup(s.lineup,s.players)||!validFormations(s.formations))throw Error('首发名单或六轮站位不正确。');
   if(s.match!==null){
     const m=s.match;
@@ -111,6 +109,6 @@ export function saveRoster(state,players,lineup){
   if(!state.match&&!validLineup(lineup,players))throw Error('首发角色不能重复，六个首发角色均需选择队员。');
   const next={...state,players,lineup:state.match?state.lineup:lineup};
   validateState(next);
-  state.players=clone(players);
+  state.players=players.map(p=>({...clone(p),position:resolvePlayerPosition(p)}));
   if(!state.match)state.lineup=clone(lineup);
 }

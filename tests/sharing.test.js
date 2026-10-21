@@ -39,15 +39,19 @@ test('large normal squad roundtrips and the link is a snapshot, not a live subsc
  const received=await parseShareLink(link);assert.equal(received.players[0].name,'二传');assert.equal(received.players.length,40);assert.notDeepEqual(received.formations,s.formations);
 });
 
-test('old v1 links with generic positions stay readable and resolve exact starter positions',async()=>{
- const {resolvePlayerPosition,ROLES}=await import('../core.js');const s=createState();
- const types=['二传','主攻','副攻','接应','主攻','副攻','自由人'],codes=[0,1,2,3,1,2,4];
+test('old v1 generic positions stay generic and retain the exact starting role assignments',async()=>{
+ const s=createState(),types=['二传','主攻','副攻','接应','主攻','副攻','自由人'],codes=[0,1,2,3,1,2,4];
  const legacy={v:1,p:s.players.map((p,i)=>[p.name,p.short,codes[i]]),l:[0,1,2,3,4,5,6],f:s.formations.map(f=>[4,3,2,5,6,1].map(p=>f[p]))};
  const incoming=await parseShareLink(rawLink(legacy));assert.deepEqual(incoming.players.map(p=>p.position),types);
- assert.deepEqual(incoming.players.slice(0,6).map(p=>resolvePlayerPosition(p,incoming.lineup)),ROLES);
- const target=createState();importTemplate(target,incoming);assert.deepEqual(target.players.slice(0,6).map(p=>p.position),ROLES);assert.deepEqual(target.formations,s.formations);
+ const target=createState();importTemplate(target,incoming);assert.deepEqual(target.players.map(p=>p.position),types);assert.deepEqual(target.lineup,incoming.lineup);assert.deepEqual(target.formations,s.formations);
 });
-test('new links retain precise bench positions and derive initials automatically',async()=>{
+test('new links normalize legacy precise positions and derive initials automatically',async()=>{
  const s=createState();s.players[0].name='王小明';s.players[0].short='王';s.players.push({id:'bench',name:'替补晓',short:'旧',position:'小副'});
- const link=await makeShareLink(s,BASE);const incoming=await parseShareLink(link);assert.equal(incoming.players[0].short,'明');assert.equal(incoming.players.at(-1).position,'小副');assert.equal(incoming.players.at(-1).short,'晓');
+ const before=clone(s),link=await makeShareLink(s,BASE),incoming=await parseShareLink(link);assert.equal(incoming.players[0].short,'明');assert.equal(incoming.players.at(-1).position,'副攻');assert.equal(incoming.players.at(-1).short,'晓');assert.deepEqual(s,before);
+});
+test('old v2 precise-position links merge player positions without changing role slots',async()=>{
+ const s=createState(),legacy={v:2,p:s.players.map((p,i)=>[p.name,p.short,[0,6,9,3,7,8,4][i]]),l:[0,1,2,3,4,5,6],f:s.formations.map(f=>[4,3,2,5,6,1].map(p=>f[p]))};
+ const incoming=await parseShareLink(rawLink(legacy));assert.deepEqual(incoming.players.map(p=>p.position),['二传','主攻','副攻','接应','主攻','副攻','自由人']);
+ assert.deepEqual(incoming.lineup.map(pid=>incoming.players.findIndex(p=>p.id===pid)),legacy.l);
+ const target=createState();importTemplate(target,incoming);assert.deepEqual(target.lineup,incoming.lineup);assert.deepEqual(target.formations,s.formations);
 });
