@@ -200,7 +200,7 @@ textarea { min-height: 88px; padding: 11px; font-size: 16px; resize: vertical; o
 .score-controls button { border: 5px solid transparent; border-radius: 14px; background-clip: padding-box; }
 .score-controls { gap: 2px; margin: 0 -5px; }
 
-.mini-cell.is-server span { color: #b82b3b; font-weight: 750; }
+.mini-cell.is-server i, .mini-cell.is-server span { color: #b82b3b; font-weight: 750; }
 
 .lineup-picker { position: relative; flex: 1; min-width: 0; }
 .lineup-picker #lineup-select { display: block; width: 100%; appearance: none; -webkit-appearance: none; padding-right: 42px; text-overflow: ellipsis; }
@@ -210,3 +210,8 @@ textarea { min-height: 88px; padding: 11px; font-size: 16px; resize: vertical; o
 .mini-aside #libero-open { width: 100%; min-height: 44px; padding: 0 4px; border: 6px solid transparent; border-radius: 14px; background: #e9edf3; background-clip: padding-box; color: var(--ink); font-size: 12px; font-weight: 550; }
 .mini-aside #libero-status { display: block; width: 100%; color: var(--muted); font-size: 11px; line-height: 1.6; text-wrap: balance; overflow-wrap: anywhere; }
 .sidebar-substitute { width: 100%; min-height: 44px; margin-top: 8px; padding: 0; color: var(--accent); font-size: 11px; white-space: nowrap; }
+
+/* Reserve the service marker space so changing possession never shifts the sidebar. */
+.mini-court { padding-bottom: 28px; }
+.mini-cell { position: relative; }
+.serve-icon { position: absolute; left: 50%; top: calc(100% + 2px); width: 16px; height: 16px; transform: translateX(-50%); pointer-events: none; }

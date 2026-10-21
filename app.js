@@ -77,7 +77,7 @@ function render(){
     const original=state.players.find(x=>x.id===m.lineup[role]);
     const cell=el('div',{class:'mini-cell'},el('i',{text:p}),el('span',{text:ROLES[role]}));
     cell.title=libero?`${full}替换${original?.name||ROLES[role]}`:full;
-    if(hasMatch&&m.serving&&!preview&&p===1){cell.classList.add('is-server');cell.title=`当前发球：${full} · ${ROLES[role]}`;cell.setAttribute('aria-label',cell.title);}
+    if(hasMatch&&m.serving&&!preview&&p===1){cell.classList.add('is-server');cell.title=`当前发球：${full} · ${ROLES[role]}`;cell.setAttribute('aria-label',cell.title);cell.append(el('img',{class:'serve-icon',src:'./icons/serve-volleyball.svg',alt:'','aria-hidden':'true',width:16,height:16}));}
     $('mini-court').append(cell);
   }
   $('rounds').replaceChildren();

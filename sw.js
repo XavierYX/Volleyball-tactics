@@ -1,5 +1,5 @@
-const CACHE='lunjian-v25';
-const SHELL=['./','./index.html','./styles.css','./app.js','./updates.js','./core.js','./libero.js','./shortlinks.js','./sharing.js','./storage.js','./manifest.webmanifest','./icons/paizhen-192-v2.png','./icons/paizhen-512-v2.png','./icons/apple-touch-icon-v2.png','./icons/paizhen-mark.svg'];
+const CACHE='lunjian-v26';
+const SHELL=['./','./index.html','./styles.css','./app.js','./updates.js','./core.js','./libero.js','./shortlinks.js','./sharing.js','./storage.js','./manifest.webmanifest','./icons/paizhen-192-v2.png','./icons/paizhen-512-v2.png','./icons/apple-touch-icon-v2.png','./icons/paizhen-mark.svg','./icons/serve-volleyball.svg'];
 const BASE=new URL('./',self.location.href);
 const URLS=new Set(SHELL.map(p=>new URL(p,BASE).href));
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL.map(path=>new Request(new URL(path,BASE),{cache:'reload'}))))));
