@@ -1,10 +1,11 @@
+import {activateLatest} from './updates.js';
 import {DEFAULT_LIBERO_ROLES,defaultLiberoChoices,migrateLiberoState,eligibleLiberoRoles,rolePosition,liberoReplacementError,setLibero,calibrateLibero} from './libero.js';
 import {shortenLink} from './shortlinks.js';
 import {templateSnapshot,makeShareLink,parseShareLink,importTemplate} from './sharing.js';
 import {ROLES,PLAYER_POSITIONS,shortName,resolvePlayerPosition,POSITIONS,clone,id,createState,startMatch,roleAt,displayedPlayer,scorePoint,undoPoint,correctMatch,checkFormation,substitute,returnStarter,endMatch,validateState,saveRoster,migrateLineups,syncLineup,createLineup,selectLineup,renameLineup,deleteLineup,nextLineupName} from './core.js';
 import {openStore,readState,writeState} from './storage.js';
 const $=id=>document.getElementById(id);
-let state,viewRound=0,editing=false,editSnapshot=null,mode='match',saveQueue=Promise.resolve(),revision=0,storageBlocked=false,rosterDraft=[],rosterLineup=[],rosterLiberoPlan=[],confirmAction,rosterReturnToSub=false,toastTimer,workerRegistration,updateRequested=false;
+let state,viewRound=0,editing=false,editSnapshot=null,mode='match',saveQueue=Promise.resolve(),revision=0,storageBlocked=false,rosterDraft=[],rosterLineup=[],rosterLiberoPlan=[],confirmAction,rosterReturnToSub=false,toastTimer,workerRegistration,updateRequested=false,checkForAppUpdate=async()=>{};
 function el(tag,props={},...children){const e=document.createElement(tag);for(const [k,v]of Object.entries(props)){if(k==='text')e.textContent=v;else if(k==='class')e.className=v;else e.setAttribute(k,v)}for(const c of children)e.append(c);return e}
 const playerName=pid=>state.players.find(p=>p.id===pid)?.name||'未安排';
 function toast(message){clearTimeout(toastTimer);$('toast').textContent=message;$('toast').hidden=false;toastTimer=setTimeout(()=>$('toast').hidden=true,2800)}
@@ -186,7 +187,7 @@ function renderSub(){
 $('sub-add-player').onclick=()=>{$('sub-dialog').close();$('nav-roster').click();rosterReturnToSub=true;$('add-player').click();};
 $('substitute').onclick=()=>{renderSub();$('sub-dialog').showModal()};
 $('sub-form').onsubmit=e=>{e.preventDefault();try{substitute(state,+$('sub-role').value,$('sub-player').value);save();render();renderSub();toast('已换人，轮次和站位保持不变');}catch(err){$('sub-error').textContent=err.message}};
-$('help').onclick=()=>{finishEditing();$('help-dialog').showModal()};
+$('help').onclick=()=>{finishEditing();$('help-dialog').showModal();checkForAppUpdate();};
 let shareRequest=0,importRequest=0,pendingTemplate=null,fullShareLink='';const shortCache=new Map();
 function clearShareHash(){
   const url=new URL(location.href),params=new URLSearchParams(url.hash.slice(1));
@@ -254,16 +255,41 @@ for(const d of document.querySelectorAll('dialog'))d.addEventListener('click',e=
 async function offlineSetup(){
   if(!('serviceWorker'in navigator)||!isSecureContext){$('offline-status').textContent='离线功能需要 HTTPS 或本机 localhost。';return;}
   try{
-    workerRegistration=await navigator.serviceWorker.register('./sw.js');
-    const updateStatus=async()=>{const cached=(await caches.keys()).some(key=>key.startsWith('lunjian-'));$('offline-status').textContent=cached?(navigator.onLine?'离线已就绪 · 可添加到主屏幕':'当前离线 · 数据继续保存在本机'):'离线资源尚未缓存，请联网重新打开';};
-    navigator.serviceWorker.ready.then(updateStatus);window.addEventListener('online',updateStatus);window.addEventListener('offline',updateStatus);
-    const waiting=()=>{$('apply-update').hidden=false;$('offline-status').textContent='新版本已就绪，退出比赛后可在“分享与备份”中更新。'};
-    if(workerRegistration.waiting)waiting();
-    workerRegistration.addEventListener('updatefound',()=>{const worker=workerRegistration.installing;worker?.addEventListener('statechange',()=>{if(worker.state==='installed'&&navigator.serviceWorker.controller)waiting()});});
-    $('apply-update').onclick=()=>{if(state.match){toast('请先退出比赛，再更新应用。');return}updateRequested=true;workerRegistration.waiting?.postMessage({type:'ACTIVATE'});};
-    navigator.serviceWorker.addEventListener('controllerchange',()=>{if(updateRequested&&!state.match)location.reload();});
-  }catch{$('offline-status').textContent='离线缓存未完成，请联网重试；当前编辑仍可保存。';}
+    let reloading=false,lastCheck=0;
+    const reload=()=>{if(!reloading&&updateRequested&&!state.match){reloading=true;location.reload();}};
+    navigator.serviceWorker.addEventListener('controllerchange',reload);
+    workerRegistration=await navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'});
+    const updateStatus=async()=>{
+      const cached=(await caches.keys()).some(key=>key.startsWith('lunjian-'));
+      if(workerRegistration.waiting){$('apply-update').hidden=false;$('offline-status').textContent='新版本已就绪，退出比赛后点击更新。';return;}
+      $('offline-status').textContent=cached?(navigator.onLine?'离线已就绪':'当前离线 · 数据继续保存在本机'):'离线资源尚未缓存，请联网重试';
+    };
+    const observe=()=>{const worker=workerRegistration.installing;if(worker){const changed=()=>{if(worker.state==='installed'||worker.state==='activated')updateStatus();};worker.addEventListener('statechange',changed);changed();}updateStatus();};
+    workerRegistration.addEventListener('updatefound',observe);observe();
+    let checking=false;
+    checkForAppUpdate=async(force=false)=>{
+      if(!navigator.onLine){if(force)$('offline-status').textContent='当前离线，请联网后检查更新。';return;}
+      if(checking||!force&&Date.now()-lastCheck<60000)return;
+      checking=true;lastCheck=Date.now();if(force)$('offline-status').textContent='正在检查更新…';
+      try{await workerRegistration.update();if(workerRegistration.installing)$('offline-status').textContent='正在下载新版…';else{await updateStatus();if(force&&!workerRegistration.waiting)$('offline-status').textContent='已是最新版本 · 离线资源已就绪';}}
+      catch{if(force)$('offline-status').textContent='检查失败，请联网重试，或打开独立更新页。';}
+      finally{checking=false;}
+    };
+    $('check-update').onclick=()=>checkForAppUpdate(true);
+    window.addEventListener('online',()=>{updateStatus();checkForAppUpdate(true);});window.addEventListener('offline',updateStatus);
+    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkForAppUpdate();});
+    window.addEventListener('pageshow',()=>checkForAppUpdate());
+    $('apply-update').onclick=async()=>{
+      if(state.match){toast('请先退出比赛，再更新应用。');return;}
+      $('apply-update').disabled=true;
+      try{await saveQueue;updateRequested=true;const changed=await activateLatest(workerRegistration);if(changed)reload();else{updateRequested=false;await checkForAppUpdate(true);}}
+      catch(error){updateRequested=false;$('offline-status').textContent=error.message;}
+      finally{$('apply-update').disabled=false;}
+    };
+    navigator.serviceWorker.ready.then(updateStatus);await checkForAppUpdate(true);
+  }catch{$('offline-status').textContent='离线缓存未完成，请联网重试；也可打开独立更新页。';}
 }
+
 try{await openStore();const saved=await readState();state=migrateLineups(migrateLiberoState(saved?validateState(saved):createState()));viewRound=state.match?.round||0;mode=state.match?'match':'default';$('save-status').textContent=saved?'已恢复本机数据':'已准备好';if(!saved)save();}
 catch{state=migrateLineups(createState());storageBlocked=true;showSaveError('本机数据读取失败，未覆盖原数据。当前可临时使用，请复制分享链接保存名单与阵型；可尝试关闭其他页面再打开。');}
 render();offlineSetup();receiveShareHash();
