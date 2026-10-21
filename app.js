@@ -48,7 +48,9 @@ function render(){
     b.disabled=!editing;b.addEventListener('pointerdown',startDrag);b.addEventListener('keydown',e=>moveByKeyboard(e,p));b.addEventListener('blur',()=>{if(!dragCleanup&&activePosition===p)clearRelationshipFocus();});$('players').append(b);
     const original=state.players.find(x=>x.id===m.lineup[role]);
     const cell=el('div',{class:'mini-cell'},el('i',{text:p}),el('span',{text:ROLES[role]}));
-    cell.title=libero?`${full}替换${original?.name||ROLES[role]}`:full;$('mini-court').append(cell);
+    cell.title=libero?`${full}替换${original?.name||ROLES[role]}`:full;
+    if(hasMatch&&m.serving&&!preview&&p===1){cell.classList.add('is-server');cell.title=`当前发球：${full} · ${ROLES[role]}`;cell.setAttribute('aria-label',cell.title);}
+    $('mini-court').append(cell);
   }
   $('rounds').replaceChildren();
   for(let i=0;i<6;i++){
