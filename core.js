@@ -25,14 +25,14 @@ export function createState() {
 }
 export function startMatch(state, config) {
   if (new Set(config.lineup.filter(Boolean)).size !== config.lineup.filter(Boolean).length || config.lineup.slice(0,6).some(x=>!x)) throw Error('六个首发角色不能重复或留空，自由人也不能兼任首发。');
-  if(config.lineup.some(x=>x&&!state.players.some(p=>p.id===x))) throw Error('首发名单中有不存在的队员。');
+  if(config.lineup.some(x=>x&&!rosterPlayers(state).some(p=>p.id===x))) throw Error('首发名单中有不存在的队员。');
   if(!Number.isInteger(config.round)||config.round<0||config.round>5||typeof config.serving!=='boolean'||!validScore(config.score)) throw Error('请检查轮次和比分。');
   const plan=state.liberoPlan??DEFAULT_LIBERO_ROLES,choices=state.liberoChoices??defaultLiberoChoices(plan),initial=config.liberoRole??null;
   if(initial!==null&&(!config.lineup[6]||!plan.includes(initial)||![1,5,6].includes(rolePosition(initial,config.round))||(config.serving&&roleAt(1,config.round)===initial)))throw Error('自由人开场只能替换允许的后排角色，不能替换发球队员。');
   if(state.match)throw Error('请先退出当前比赛。');
   state.lineup=clone(config.lineup);
   syncLineup(state);
-  state.match={lineupId:state.activeLineupId??null,round:config.round,serving:config.serving,score:clone(config.score),teams:config.teams.map(x=>x.trim()||'球队'),lineup:clone(config.lineup),originalLineup:clone(config.lineup),formations:clone(state.formations),history:[],substitutions:[],startedAt:new Date().toISOString(),liberoPlan:clone(plan),liberoChoices:clone(choices)};
+  state.match={rosterIds:rosterPlayers(state).map(p=>p.id),lineupId:state.activeLineupId??null,round:config.round,serving:config.serving,score:clone(config.score),teams:config.teams.map(x=>x.trim()||'球队'),lineup:clone(config.lineup),originalLineup:clone(config.lineup),formations:clone(state.formations),history:[],substitutions:[],startedAt:new Date().toISOString(),liberoPlan:clone(plan),liberoChoices:clone(choices)};
   state.match.libero=newLiberoState(state.match,initial);
 }
 export function validScore(score) { return Array.isArray(score)&&score.length===2&&score.every(n=>Number.isSafeInteger(n)&&n>=0&&n<9999); }
@@ -90,7 +90,7 @@ export function substitute(state,role,playerId) {
   if(!m||!Number.isInteger(role)||role<0||role>6)throw Error('没有可替换的角色。');
   if(role===6)throw Error('自由人不是普通换人角色；伤病重新指定需由裁判处理。');
   if(m.libero?.role===role)throw Error('请先换回自由人所替换的原队员，再进行普通换人。');
-  if(!state.players.some(p=>p.id===playerId))throw Error('请选择替补队员。');
+  if(!rosterPlayers(state,m).some(p=>p.id===playerId))throw Error('请选择当前阵容中的替补队员。');
   if(m.lineup.includes(playerId))throw Error('该队员已在当前阵容中。');
   const from=m.lineup[role];
   m.lineup[role]=playerId;
@@ -113,16 +113,24 @@ function validFormations(f) {
 function validLineup(l,players) {
   return Array.isArray(l)&&l.length===7&&l.slice(0,6).every(x=>typeof x==='string'&&players.some(p=>p.id===x))&&(l[6]===null||players.some(p=>p.id===l[6]))&&new Set(l.filter(Boolean)).size===l.filter(Boolean).length;
 }
+function validRoster(ids,players,required=[]){return Array.isArray(ids)&&ids.length>=6&&ids.length<=200&&new Set(ids).size===ids.length&&ids.every(pid=>typeof pid==='string'&&players.some(p=>p.id===pid))&&required.filter(Boolean).every(pid=>ids.includes(pid));}
+/** Return only this lineup's members; legacy standalone templates contain their own full roster. */
+export function rosterPlayers(state,source=state){
+  const ids=source.rosterIds;
+  return ids?ids.map(pid=>state.players.find(p=>p.id===pid)).filter(Boolean):state.players;
+}
 /** Reject malformed backups before replacing any local data. */
 export function validateState(s) {
   if(!s||s.version!==1||!Array.isArray(s.players)||s.players.length<6||s.players.length>200)throw Error('备份版本或队员数据不正确。');
   if(new Set(s.players.map(p=>p.id)).size!==s.players.length||s.players.some(p=>!p||typeof p.id!=='string'||!p.id||typeof p.name!=='string'||!p.name.trim()||p.name.length>32||typeof p.short!=='string'||Array.from(p.short).length!==1||![...PLAYER_POSITIONS,...ROLES].includes(p.position)))throw Error('队员信息不完整。');
   if(s.liberoPlan!==undefined&&!validPlan(s.liberoPlan)||s.liberoChoices!==undefined&&!validChoices(s.liberoChoices,s.liberoPlan??DEFAULT_LIBERO_ROLES))throw Error('自由人预设不正确。');
+  if(s.rosterIds!==undefined&&!validRoster(s.rosterIds,s.players,s.lineup))throw Error('阵容队员名单不正确。');
   if(!validLineup(s.lineup,s.players)||!validFormations(s.formations))throw Error('首发名单或六轮站位不正确。');
   if(s.lineupSets!==undefined){
     if(!Array.isArray(s.lineupSets)||!s.lineupSets.length||s.lineupSets.length>30||new Set(s.lineupSets.map(x=>x?.id)).size!==s.lineupSets.length||!s.lineupSets.some(x=>x.id===s.activeLineupId)||new Set(s.lineupSets.map(x=>x?.name)).size!==s.lineupSets.length)throw Error('阵容列表不正确。');
     for(const set of s.lineupSets){
       if(!set||typeof set.id!=='string'||!set.id||typeof set.name!=='string'||!set.name.trim()||set.name.length>24)throw Error('阵容名称不正确。');
+      if(set.rosterIds!==undefined&&!validRoster(set.rosterIds,s.players,set.id===s.activeLineupId?[]:set.lineup))throw Error('阵容队员名单不正确。');
       // The top-level fields are the current working copy; the selected record is synchronized before saving.
       if(set.id!==s.activeLineupId&&(!validLineup(set.lineup,s.players)||!validFormations(set.formations)||!validPlan(set.liberoPlan)||!validChoices(set.liberoChoices,set.liberoPlan)))throw Error('阵容首发或站位不正确。');
     }
@@ -131,6 +139,7 @@ export function validateState(s) {
   if(s.match!==null){
     const m=s.match;
     if(!m||!validScore(m.score)||!Number.isInteger(m.round)||m.round<0||m.round>5||typeof m.serving!=='boolean'||!validLineup(m.lineup,s.players)||!validLineup(m.originalLineup,s.players)||!validFormations(m.formations)||!Array.isArray(m.history)||m.history.length>100000||!Array.isArray(m.substitutions)||!Array.isArray(m.teams)||m.teams.length!==2||m.teams.some(x=>typeof x!=='string'||x.length>24))throw Error('比赛数据不正确。');
+    if(m.rosterIds!==undefined&&!validRoster(m.rosterIds,s.players,[...m.lineup,...m.originalLineup,...m.substitutions.flatMap(e=>[e?.from,e?.to])]))throw Error('本场队员名单不正确。');
     if(m.liberoPlan!==undefined&&!validPlan(m.liberoPlan)||m.liberoChoices!==undefined&&!validChoices(m.liberoChoices,m.liberoPlan??DEFAULT_LIBERO_ROLES)||!validLiberoState(m))throw Error('自由人记录不正确。');
     if(m.history.some(e=>!validScore(e.score)||!Number.isInteger(e.round)||e.round<0||e.round>5||typeof e.serving!=='boolean'))throw Error('记分历史不正确。');
     if(m.substitutions.some(e=>!e||!Number.isInteger(e.role)||e.role<0||e.role>6||typeof e.at!=='string'||!validScore(e.score)||![e.from,e.to].every(pid=>pid===null||s.players.some(p=>p.id===pid))))throw Error('换人历史不正确。');
@@ -138,24 +147,31 @@ export function validateState(s) {
   return s;
 }
 
-/** Save editable roster and pre-match roles; live substitutions remain independent. */
+/** Save only the active lineup's members; retain other lineups and live references. */
 export function saveRoster(state,players,lineup){
   if(!state.match&&!validLineup(lineup,players))throw Error('首发角色不能重复，六个首发角色均需选择队员。');
-  const next={...state,players,lineup:state.match?state.lineup:lineup};
-  validateState(next);
-  state.players=players.map(p=>({...clone(p),position:resolvePlayerPosition(p)}));
-  if(!state.match)state.lineup=clone(lineup);
-  syncLineup(state);
+  const next=clone(state),members=players.map(p=>p.id),oldMembers=rosterPlayers(state).map(p=>p.id);
+  const keep=new Set(next.lineupSets?.filter(x=>x.id!==next.activeLineupId).flatMap(x=>x.rosterIds??x.lineup)??[]);
+  const merged=new Map(next.players.filter(p=>!oldMembers.includes(p.id)||members.includes(p.id)||keep.has(p.id)).map(p=>[p.id,p]));
+  for(const player of players)merged.set(player.id,{...clone(player),position:resolvePlayerPosition(player)});
+  next.players=[...merged.values()];next.rosterIds=members;
+  if(!next.match)next.lineup=clone(lineup);else next.match.rosterIds=clone(members);
+  syncLineup(next);validateState(next);Object.assign(state,next);
 }
 
-
-/** All lineups share players; top-level fields are the active lineup's working copy. */
+/** Players may be reused by copied lineups, while membership belongs to each lineup. */
 export const MAX_LINEUPS=30;
-const lineupFields=['lineup','formations','liberoPlan','liberoChoices'];
-export function lineupData(state){return {lineup:clone(state.lineup),formations:clone(state.formations),liberoPlan:clone(state.liberoPlan??DEFAULT_LIBERO_ROLES),liberoChoices:clone(state.liberoChoices??defaultLiberoChoices(state.liberoPlan??DEFAULT_LIBERO_ROLES))};}
+const lineupFields=['lineup','formations','liberoPlan','liberoChoices','rosterIds'];
+export function lineupData(state){return {rosterIds:rosterPlayers(state).map(p=>p.id),lineup:clone(state.lineup),formations:clone(state.formations),liberoPlan:clone(state.liberoPlan??DEFAULT_LIBERO_ROLES),liberoChoices:clone(state.liberoChoices??defaultLiberoChoices(state.liberoPlan??DEFAULT_LIBERO_ROLES))};}
 export function migrateLineups(state){
   if(!state.lineupSets){const first={id:id(),name:'阵容 1',...lineupData(state)};state.lineupSets=[first];state.activeLineupId=first.id;}
-  if(state.match)state.match.lineupId??=state.activeLineupId;
+  // Older versions kept a common bench without ownership metadata. Preserve those
+  // unassigned reserves in each legacy lineup, but exclude other lineups' starters.
+  const assigned=new Set([...state.lineupSets.flatMap(x=>x.lineup),...state.lineup]);
+  const reserves=state.players.filter(p=>!assigned.has(p.id)).map(p=>p.id);
+  for(const set of state.lineupSets)set.rosterIds??=[...new Set([...set.lineup.filter(Boolean),...reserves])];
+  state.rosterIds??=clone(state.lineupSets.find(x=>x.id===state.activeLineupId).rosterIds);
+  if(state.match){state.match.lineupId??=state.activeLineupId;state.match.rosterIds??=[...new Set([...state.rosterIds,...state.match.lineup,...state.match.originalLineup,...state.match.substitutions.flatMap(e=>[e.from,e.to])].filter(Boolean))];}
   return state;
 }
 export function syncLineup(state){const current=state.lineupSets?.find(x=>x.id===state.activeLineupId);if(current)Object.assign(current,lineupData(state));}

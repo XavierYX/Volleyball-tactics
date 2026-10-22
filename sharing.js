@@ -1,6 +1,6 @@
 import {DEFAULT_LIBERO_ROLES,defaultLiberoChoices} from './libero.js';
 import {expandLink} from './shortlinks.js';
-import {clone,id,validateState,POSITIONS,shortName,resolvePlayerPosition,migrateLineups,syncLineup,createLineup,nextLineupName,MAX_LINEUPS} from './core.js';
+import {clone,id,validateState,POSITIONS,shortName,resolvePlayerPosition,migrateLineups,syncLineup,createLineup,nextLineupName,MAX_LINEUPS,rosterPlayers} from './core.js';
 // Codes 0–5 remain stable for links created before specific positions were introduced.
 const TYPES=['二传','主攻','副攻','接应','自由人','其他','大主','小主','大副','小副'];
 export const MAX_LINK_LENGTH=16000;
@@ -11,7 +11,7 @@ export function templateSnapshot(state,source='default'){
   const from=source==='match'?state.match:saved;
   const name=saved?.name||state.lineupSets?.find(x=>x.id===state.activeLineupId)?.name||'阵容';
   if(source==='match'&&!from)throw Error('没有正在进行的比赛。');
-  const clean={version:1,players:state.players.map(p=>({id:p.id,name:p.name,short:shortName(p.name),position:resolvePlayerPosition(p)||p.position})),lineup:clone(from?.lineup||state.lineup),formations:clone(from?.formations||state.formations),match:null,liberoPlan:clone(from?.liberoPlan??state.liberoPlan??DEFAULT_LIBERO_ROLES),liberoChoices:clone(from?.liberoChoices??state.liberoChoices??defaultLiberoChoices(from?.liberoPlan??state.liberoPlan??DEFAULT_LIBERO_ROLES))};
+  const clean={version:1,players:rosterPlayers(state,from??state).map(p=>({id:p.id,name:p.name,short:shortName(p.name),position:resolvePlayerPosition(p)||p.position})),lineup:clone(from?.lineup||state.lineup),formations:clone(from?.formations||state.formations),match:null,liberoPlan:clone(from?.liberoPlan??state.liberoPlan??DEFAULT_LIBERO_ROLES),liberoChoices:clone(from?.liberoChoices??state.liberoChoices??defaultLiberoChoices(from?.liberoPlan??state.liberoPlan??DEFAULT_LIBERO_ROLES))};
   clean.lineupName=source==='match'?name+'（本场）':name;
   return clone(validateState(clean));
 }
@@ -83,6 +83,7 @@ export function importTemplate(state,template){
   const base=(template.lineupName||'导入阵容').trim().slice(0,24)||'导入阵容';
   const name=next.lineupSets.some(x=>x.name===base)?nextLineupName(next,base.slice(0,18)):base;
   createLineup(next,name);
+  next.rosterIds=clean.players.map(p=>mapping.get(p.id));
   next.lineup=clean.lineup.map(pid=>pid===null?null:mapping.get(pid));next.formations=clean.formations;next.liberoPlan=clean.liberoPlan;next.liberoChoices=clean.liberoChoices;
   syncLineup(next);validateState(next);Object.assign(state,next);
 }

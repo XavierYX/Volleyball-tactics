@@ -14,7 +14,7 @@ test('compressed Chinese roster and all six edited formations roundtrip without 
 test('uncompressed fallback and no-libero lineup are supported',async()=>{const s=createState();s.lineup[6]=null;const link=await makeShareLink(s,BASE,'default',{compress:false});assert.match(link,/#pz=j1\./);assert.deepEqual(normalize(await parseShareLink(' '+link+'\n')),normalize(s));});
 test('default and live formation choices exclude scores, service, history and substitution records',async()=>{
  const s=createState();startMatch(s,{lineup:s.lineup,score:[12,9],round:4,serving:true,teams:['A','B']});scorePoint(s.match,0);s.match.formations[0][1]=[71,83];
- s.players.push({id:'bench',name:'替补',short:'替',position:'主攻'});s.match.lineup[1]='bench';
+ s.players.push({id:'bench',name:'替补',short:'替',position:'主攻'});s.match?.rosterIds.push('bench');s.match.lineup[1]='bench';
  const defaults=await parseShareLink(await makeShareLink(s,BASE));const live=await parseShareLink(await makeShareLink(s,BASE,'match'));
  assert.notDeepEqual(defaults.formations,live.formations);assert.equal(live.players.find(p=>p.id===live.lineup[1]).name,'替补');
  for(const snapshot of [templateSnapshot(s),templateSnapshot(s,'match'),live]){assert.equal(snapshot.match,null);assert.equal('score'in snapshot,false);assert.equal('history'in snapshot,false);assert.equal('substitutions'in snapshot,false);}
@@ -47,7 +47,7 @@ test('old v1 generic positions stay generic and retain the exact starting role a
  const target=createState();importTemplate(target,incoming);assert.deepEqual(target.players.map(p=>p.position),types);assert.deepEqual(roleNames(target),roleNames(incoming));assert.deepEqual(target.formations,s.formations);
 });
 test('new links normalize legacy precise positions and derive initials automatically',async()=>{
- const s=createState();s.players[0].name='王小明';s.players[0].short='王';s.players.push({id:'bench',name:'替补晓',short:'旧',position:'小副'});
+ const s=createState();s.players[0].name='王小明';s.players[0].short='王';s.players.push({id:'bench',name:'替补晓',short:'旧',position:'小副'});s.match?.rosterIds.push('bench');
  const before=clone(s),link=await makeShareLink(s,BASE),incoming=await parseShareLink(link);assert.equal(incoming.players[0].short,'明');assert.equal(incoming.players.at(-1).position,'副攻');assert.equal(incoming.players.at(-1).short,'晓');assert.deepEqual(s,before);
 });
 test('old v2 precise-position links merge player positions without changing role slots',async()=>{

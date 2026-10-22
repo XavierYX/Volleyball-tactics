@@ -21,7 +21,7 @@ test('renaming and removing a lineup keep players and other saved lineups intact
 test('a match locks lineup management and writes its formation only to its source lineup',()=>{
  const s=setup(),first=s.activeLineupId;createLineup(s,'比赛');const second=s.activeLineupId,firstData=clone(s.lineupSets[0]);start(s);
  for(const action of [()=>selectLineup(s,first),()=>createLineup(s,'新'),()=>renameLineup(s,'改名'),()=>deleteLineup(s,first)])assert.throws(action,/先退出/);
- s.players.push({id:'bench',name:'替补',short:'补',position:'主攻'});substitute(s,1,'bench');s.match.formations[0][1]=[71,86];endMatch(s,true);assert.equal(s.activeLineupId,second);assert.deepEqual(s.formations[0][1],[71,86]);assert.notEqual(s.lineup[1],'bench');assert.deepEqual(s.lineupSets[0],firstData);selectLineup(s,first);assert.deepEqual(s.formations,firstData.formations);
+ s.players.push({id:'bench',name:'替补',short:'补',position:'主攻'});s.match?.rosterIds.push('bench');substitute(s,1,'bench');s.match.formations[0][1]=[71,86];endMatch(s,true);assert.equal(s.activeLineupId,second);assert.deepEqual(s.formations[0][1],[71,86]);assert.notEqual(s.lineup[1],'bench');assert.deepEqual(s.lineupSets[0],firstData);selectLineup(s,first);assert.deepEqual(s.formations,firstData.formations);
 });
 test('discarding live changes keeps saved lineup; common player edits affect every lineup',()=>{
  const s=setup(),first=s.activeLineupId;createLineup(s,'第二套');const before=clone(s.formations);start(s);s.match.formations[0][1]=[12,12];endMatch(s,false);assert.deepEqual(s.formations,before);

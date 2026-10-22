@@ -26,7 +26,7 @@ test('undo restores automatic Libero exit but cannot cross later manual replacem
  scorePoint(s.match,1);setLibero(s.match,null,confirmed);const before=clone(s);assert.throws(()=>undoPoint(s.match),/校正比赛/);assert.deepEqual(s,before);
 });
 test('normal substitution cannot replace an on-court Libero slot or designated Libero',()=>{
- const s=game(0,false,5);s.players.push({id:'bench',name:'替补',short:'补',position:'副攻'});
+ const s=game(0,false,5);s.players.push({id:'bench',name:'替补',short:'补',position:'副攻'});s.match?.rosterIds.push('bench');
  assert.throws(()=>substitute(s,5,'bench'),/先换回/);assert.throws(()=>substitute(s,6,'bench'),/普通换人/);
  scorePoint(s.match,1);setLibero(s.match,null,confirmed);substitute(s,5,'bench');scorePoint(s.match,1);setLibero(s.match,5,confirmed);assert.equal(s.match.libero.replacedId,'bench');
 });
