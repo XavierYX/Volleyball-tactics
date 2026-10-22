@@ -22,7 +22,8 @@ button, input, select, textarea { font: inherit; }
 button { min-height: 44px; border: 0; padding: 0 10px; color: inherit; background: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 button:disabled { color: #9ca6b5; cursor: default; }
 button:active:not(:disabled) { transform: scale(.98); }
-button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+/* Dialog autofocus should not add a separate ring to controls. */
+button:focus, input:focus, select:focus, textarea:focus, summary:focus, dialog:focus, a:focus { outline: none; }
 [hidden] { display: none !important; }
 .device { width: 100%; max-width: 480px; margin: 0 auto; }
 .app { padding: max(20px, calc(env(safe-area-inset-top, 0px) + 12px)) 16px max(16px, env(safe-area-inset-bottom)); }
@@ -110,8 +111,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .editing .player.selected-player.invalid { box-shadow: 0 0 0 6px #dc425b24; }
 .editing .player.unrelated-player { opacity: .38; }
 @media (prefers-reduced-motion: reduce) { .editing .player, .links polyline { transition: none; } }
-.player:focus-visible { outline: 2px solid var(--front); outline-offset: 3px; }
-.player.back:focus-visible { outline-color: var(--back); }
 .legend { display: flex; gap: 12px; margin-top: 9px; color: var(--muted); font-size: 11px; }
 .legend span { display: flex; align-items: center; gap: 5px; }
 .legend i { display: block; width: 7px; height: 7px; border-radius: 50%; background: var(--front); }

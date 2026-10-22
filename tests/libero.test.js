@@ -1,45 +1,46 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createState,startMatch,scorePoint,undoPoint,correctMatch,substitute,displayedPlayer,validateState,clone} from '../core.js';
+import {createState,startMatch,scorePoint,undoPoint,correctMatch,substitute,displayedPlayer,validateState,clone,roleAt} from '../core.js';
 import {setLibero,calibrateLibero,migrateLiberoState,eligibleLiberoRoles} from '../libero.js';
-const confirmed={deadBallConfirmed:true};
 function game(round=0,serving=false,liberoRole=null){const s=createState();startMatch(s,{lineup:s.lineup,score:[0,0],round,serving,liberoRole,teams:['A','B']});return s;}
-test('only one of the selected back-row roles can be replaced, not 小副 or a server',()=>{
- const s=game();assert.deepEqual(eligibleLiberoRoles(s.match),[5]);assert.throws(()=>setLibero(s.match,2,confirmed));assert.throws(()=>setLibero(s.match,1,confirmed));
- assert.throws(()=>setLibero(s.match,5));setLibero(s.match,5,confirmed);assert.equal(displayedPlayer(s,s.match,6,0).libero,true);
- assert.throws(()=>startMatch(createState(),{lineup:s.lineup,score:[0,0],round:1,serving:true,liberoRole:1,teams:['A','B']}));
- const serving=game(1,true);assert.deepEqual(eligibleLiberoRoles(serving.match),[5]);
+test('manual Libero selection permits every role including front row and serving slot',()=>{
+ const s=game(1,true);assert.deepEqual(eligibleLiberoRoles(s.match),[0,1,2,3,4,5]);
+ for(let role=0;role<6;role++){
+  setLibero(s.match,role);let count=0;
+  for(let p=1;p<=6;p++){const v=displayedPlayer(s,s.match,p,1);if(v.libero){count++;assert.equal(v.role,role);assert.equal(v.player.id,s.lineup[6]);}}
+  assert.equal(count,1);validateState(s);
+ }
+ const initial=game(1,true,1);assert.equal(initial.match.libero.role,1);
 });
-test('a completed rally is required; manual minus cannot unlock a replacement',()=>{
- const s=game(1,false);setLibero(s.match,5,confirmed);assert.throws(()=>setLibero(s.match,null,confirmed),/完成一球/);
- scorePoint(s.match,1);scorePoint(s.match,1,-1);setLibero(s.match,null,confirmed);assert.throws(()=>setLibero(s.match,1,confirmed),/完成一球/);
- scorePoint(s.match,1);setLibero(s.match,1,confirmed);assert.equal(s.match.libero.role,1);
- assert.throws(()=>setLibero(s.match,5,confirmed),/先换回/);
+test('entry, direct role switches, exit and immediate re-entry need no confirmation or rally',()=>{
+ const s=game();for(const role of [5,1,null,2,null,5]){setLibero(s.match,role);assert.equal(s.match.libero.role,role);validateState(s);}
+ assert.equal(s.match.libero.events.length,6);assert.equal(s.match.libero.rally,0);
 });
-test('rotation returns original player before front row, and blocks immediate re-entry',()=>{
- const s=game(1,false,5),original=s.match.lineup[5];scorePoint(s.match,0);assert.equal(s.match.round,2);assert.equal(s.match.libero.role,null);assert.equal(s.match.lineup[5],original);
- assert.equal(s.match.libero.events.at(-1).reason,'rotation');assert.throws(()=>setLibero(s.match,1,confirmed),/完成一球/);
- scorePoint(s.match,1);setLibero(s.match,1,confirmed);assert.equal(s.match.libero.role,1);validateState(s);
+test('rotation and service changes retain the user selected Libero role',()=>{
+ const s=game(1,false,5);scorePoint(s.match,0);assert.equal(s.match.round,2);assert.equal(s.match.libero.role,5);
+ const position=[1,2,3,4,5,6].find(p=>roleAt(p,2)===5);assert.equal(displayedPlayer(s,s.match,position,2).libero,true);
+ scorePoint(s.match,1);assert.equal(s.match.libero.role,5);validateState(s);
 });
-test('undo restores automatic Libero exit but cannot cross later manual replacements',()=>{
- const s=game(1,false,5);scorePoint(s.match,0);undoPoint(s.match);assert.equal(s.match.libero.role,5);assert.equal(s.match.round,1);assert.equal(s.match.libero.rally,0);
- scorePoint(s.match,1);setLibero(s.match,null,confirmed);const before=clone(s);assert.throws(()=>undoPoint(s.match),/校正比赛/);assert.deepEqual(s,before);
+test('score undo restores score and rotation while preserving later manual personnel changes',()=>{
+ const s=game(1,false,5);scorePoint(s.match,0);undoPoint(s.match);assert.equal(s.match.round,1);assert.equal(s.match.libero.role,5);
+ scorePoint(s.match,1);setLibero(s.match,2);undoPoint(s.match);assert.deepEqual(s.match.score,[0,0]);assert.equal(s.match.libero.role,2);validateState(s);
 });
-test('normal substitution cannot replace an on-court Libero slot or designated Libero',()=>{
- const s=game(0,false,5);s.players.push({id:'bench',name:'替补',short:'补',position:'副攻'});s.match?.rosterIds.push('bench');
- assert.throws(()=>substitute(s,5,'bench'),/先换回/);assert.throws(()=>substitute(s,6,'bench'),/普通换人/);
- scorePoint(s.match,1);setLibero(s.match,null,confirmed);substitute(s,5,'bench');scorePoint(s.match,1);setLibero(s.match,5,confirmed);assert.equal(s.match.libero.replacedId,'bench');
+test('ordinary replacement updates the player behind a Libero slot without a rule gate',()=>{
+ const s=game(0,false,5);s.players.push({id:'bench',name:'替补',short:'补',position:'副攻'});s.match.rosterIds.push('bench');
+ substitute(s,5,'bench');assert.equal(s.match.libero.replacedId,'bench');setLibero(s.match,null);assert.equal(displayedPlayer(s,s.match,6,0).player.id,'bench');validateState(s);
 });
-test('correction is atomic and old ongoing matches require explicit confirmation',()=>{
- const s=game(0,false,5),before=clone(s);assert.throws(()=>correctMatch(s.match,{score:[9,8],round:0,serving:false,liberoRole:1}));assert.deepEqual(s,before);
- delete s.match.libero;delete s.liberoPlan;delete s.liberoChoices;migrateLiberoState(s);assert.equal(s.match.libero.verified,false);assert.throws(()=>scorePoint(s.match,0),/确认/);
- calibrateLibero(s.match,5,confirmed);scorePoint(s.match,1);validateState(s);
+test('correction accepts user selection and malformed role remains atomic',()=>{
+ const s=game(0,false,5);correctMatch(s.match,{score:[9,8],round:0,serving:true,liberoRole:2});assert.equal(s.match.libero.role,2);validateState(s);
+ const before=clone(s);assert.throws(()=>correctMatch(s.match,{score:[9,8],round:0,serving:false,liberoRole:9}));assert.deepEqual(s,before);
 });
-test('malformed Libero config and state are rejected without affecting valid state',()=>{
- const s=game();for(const change of [x=>x.liberoPlan=[1,1],x=>x.liberoChoices=[1],x=>x.match.libero.role=2,x=>x.match.libero.rally=-1,x=>x.match.libero.replacedId='bad',x=>x.match.libero.events=[{}]]){const bad=clone(s);change(bad);assert.throws(()=>validateState(bad));}
+test('legacy unverified matches remain scoreable without a confirmation gate',()=>{
+ const s=game();delete s.match.libero;delete s.liberoPlan;delete s.liberoChoices;migrateLiberoState(s);scorePoint(s.match,0);setLibero(s.match,2);validateState(s);
 });
-
-test('legacy calibration discards unverifiable old score undo history; no-Libero matches stay usable',()=>{
- const s=game();scorePoint(s.match,1);delete s.match.libero;migrateLiberoState(s);calibrateLibero(s.match,null,confirmed);assert.equal(s.match.history.length,0);
- const noLibero=game();noLibero.match.lineup[6]=null;noLibero.match.originalLineup[6]=null;delete noLibero.match.libero;migrateLiberoState(noLibero);assert.equal(noLibero.match.libero.verified,true);scorePoint(noLibero.match,0);validateState(noLibero);
+test('structural validation still rejects corrupt data and accepts any six-round role presets',()=>{
+ const s=game();s.liberoChoices=[0,1,2,3,4,5];validateState(s);
+ for(const change of [x=>x.liberoPlan=[1,1],x=>x.liberoChoices=[1],x=>x.match.libero.role=9,x=>x.match.libero.rally=-1,x=>x.match.libero.replacedId='bad',x=>x.match.libero.events=[{}]]){const bad=clone(s);change(bad);assert.throws(()=>validateState(bad));}
+ const no=game();no.match.lineup[6]=null;assert.deepEqual(eligibleLiberoRoles(no.match),[]);assert.throws(()=>setLibero(no.match,2),/安排自由人/);
+});
+test('calibration resets old undo snapshots without requiring a checkbox',()=>{
+ const s=game();scorePoint(s.match,1);calibrateLibero(s.match,2);assert.equal(s.match.history.length,0);assert.equal(s.match.libero.role,2);validateState(s);
 });

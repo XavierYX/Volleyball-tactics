@@ -1,4 +1,4 @@
-import {DEFAULT_LIBERO_ROLES,defaultLiberoChoices,validPlan,validChoices,newLiberoState,advanceLibero,validLiberoState,calibrateLibero,eligibleLiberoRoles,rolePosition} from './libero.js';
+import {DEFAULT_LIBERO_ROLES,defaultLiberoChoices,validPlan,validChoices,newLiberoState,advanceLibero,validLiberoState,calibrateLibero,eligibleLiberoRoles} from './libero.js';
 /** Pure match and rotation rules. Coordinates are percentages of our half court. */
 export const ROLES = ['二传', '大主', '小副', '接应', '小主', '大副'];
 export const PLAYER_POSITIONS=['二传','主攻','副攻','接应','自由人','其他'];
@@ -28,7 +28,7 @@ export function startMatch(state, config) {
   if(config.lineup.some(x=>x&&!rosterPlayers(state).some(p=>p.id===x))) throw Error('首发名单中有不存在的队员。');
   if(!Number.isInteger(config.round)||config.round<0||config.round>5||typeof config.serving!=='boolean'||!validScore(config.score)) throw Error('请检查轮次和比分。');
   const plan=state.liberoPlan??DEFAULT_LIBERO_ROLES,choices=state.liberoChoices??defaultLiberoChoices(plan),initial=config.liberoRole??null;
-  if(initial!==null&&(!config.lineup[6]||!plan.includes(initial)||![1,5,6].includes(rolePosition(initial,config.round))||(config.serving&&roleAt(1,config.round)===initial)))throw Error('自由人开场只能替换允许的后排角色，不能替换发球队员。');
+  if(initial!==null&&(!config.lineup[6]||!Number.isInteger(initial)||initial<0||initial>5))throw Error('请选择有效的自由人替换角色。');
   if(state.match)throw Error('请先退出当前比赛。');
   state.lineup=clone(config.lineup);
   syncLineup(state);
@@ -38,7 +38,6 @@ export function startMatch(state, config) {
 export function validScore(score) { return Array.isArray(score)&&score.length===2&&score.every(n=>Number.isSafeInteger(n)&&n>=0&&n<9999); }
 function snapshot(match) {return {score:clone(match.score),round:match.round,serving:match.serving,...(match.libero?{libero:clone(match.libero)}:{})};}
 export function scorePoint(match, team, delta=1) {
-  if(match.libero&&!match.libero.verified)throw Error('请先确认当前自由人状态。');
   if(![0,1].includes(team)||![1,-1].includes(delta))throw Error('无效记分。');
   if(delta===-1&&match.score[team]===0)return false;
   if(delta===1&&match.score[team]>=9998)throw Error('分数已达到上限。');
@@ -53,8 +52,8 @@ export function scorePoint(match, team, delta=1) {
 }
 export function undoPoint(match) {
   const previous=match.history.at(-1);
-  if(previous?.libero&&match.libero&&previous.libero.manualSeq!==match.libero.manualSeq)throw Error('该球之后已有自由人替换，请使用校正比赛核对比分和场上人员。');
-  if(previous?.libero?.role!==null&&previous?.libero?.role!==undefined&&previous.libero.replacedId!==match.lineup[previous.libero.role])throw Error('该球后已更换原队员，请使用校正比赛核对自由人状态。');
+  // Score undo preserves a later manual personnel choice.
+  if(previous?.libero&&match.libero&&(previous.libero.manualSeq!==match.libero.manualSeq||previous.libero.replacedId!==match.libero.replacedId))previous.libero=clone(match.libero);
   match.history.pop();
   if(!previous)return false;
   Object.assign(match,previous);return true;
@@ -64,7 +63,7 @@ export function correctMatch(match,{score,round,serving,liberoRole}) {
   const next=clone(match);Object.assign(next,{score:clone(score),round,serving,history:[]});
   let role=liberoRole===undefined?(next.libero?.role??null):liberoRole;
   if(liberoRole===undefined&&role!==null&&!eligibleLiberoRoles(next).includes(role))role=null;
-  calibrateLibero(next,role,{deadBallConfirmed:true});Object.assign(match,next);
+  calibrateLibero(next,role);Object.assign(match,next);
 }
 // The same ordered pairs drive center-point validation and editing guides.
 export const POSITION_RELATIONS=Object.freeze([[4,3,0],[3,2,0],[5,6,0],[6,1,0],[4,5,1],[3,6,1],[2,1,1]].map(Object.freeze));
@@ -81,7 +80,7 @@ export function checkFormation(coords) {
 export function displayedPlayer(state,match,position,round) {
   const role=roleAt(position,round);
   const selected=match.libero&&round===match.round?match.libero.role:(match.liberoChoices??state.liberoChoices??defaultLiberoChoices(state.liberoPlan??DEFAULT_LIBERO_ROLES))[round];
-  const libero=[1,5,6].includes(position)&&selected===role&&!!match.lineup[6];
+  const libero=selected===role&&!!match.lineup[6];
   const player=state.players.find(p=>p.id===match.lineup[libero?6:role]);
   return {player,role,libero,back:[1,5,6].includes(position)};
 }
@@ -89,11 +88,11 @@ export function substitute(state,role,playerId) {
   const m=state.match;
   if(!m||!Number.isInteger(role)||role<0||role>6)throw Error('没有可替换的角色。');
   if(role===6)throw Error('自由人不是普通换人角色；伤病重新指定需由裁判处理。');
-  if(m.libero?.role===role)throw Error('请先换回自由人所替换的原队员，再进行普通换人。');
   if(!rosterPlayers(state,m).some(p=>p.id===playerId))throw Error('请选择当前阵容中的替补队员。');
   if(m.lineup.includes(playerId))throw Error('该队员已在当前阵容中。');
   const from=m.lineup[role];
   m.lineup[role]=playerId;
+  if(m.libero?.role===role)m.libero.replacedId=playerId;
   m.substitutions.push({id:id(),role,from,to:playerId,score:clone(m.score),at:new Date().toISOString()});
 }
 export function returnStarter(state,role) {

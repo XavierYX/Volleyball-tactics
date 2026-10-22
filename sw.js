@@ -1,4 +1,4 @@
-const CACHE='lunjian-v27';
+const CACHE='lunjian-v28';
 const SHELL=['./','./index.html','./styles.css','./app.js','./touch.js','./updates.js','./core.js','./libero.js','./shortlinks.js','./sharing.js','./storage.js','./manifest.webmanifest','./icons/paizhen-192-v2.png','./icons/paizhen-512-v2.png','./icons/apple-touch-icon-v2.png','./icons/paizhen-mark.svg','./icons/serve-volleyball.svg'];
 const BASE=new URL('./',self.location.href);
 const URLS=new Set(SHELL.map(p=>new URL(p,BASE).href));

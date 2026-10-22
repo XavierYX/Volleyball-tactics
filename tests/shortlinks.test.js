@@ -19,5 +19,5 @@ test('lookup only contacts the approved short-link host; invalid service data is
 test('share includes Libero presets but excludes live replacement history',async()=>{
  const {startMatch}=await import('../core.js');const s=createState();startMatch(s,{lineup:s.lineup,score:[0,0],round:0,serving:false,teams:['A','B']});
  const snap=templateSnapshot(s,'match');assert.equal(snap.match,null);assert.equal(snap.libero,undefined);assert.deepEqual(snap.liberoPlan,[1,5]);assert.deepEqual(snap.liberoChoices,s.liberoChoices);
- const bad=clone(s);bad.liberoPlan=[2];assert.throws(()=>templateSnapshot(bad));
+ const bad=clone(s);bad.liberoPlan=[2];bad.liberoChoices=[2,2,2,2,2,2];assert.deepEqual(templateSnapshot(bad).liberoChoices,[2,2,2,2,2,2]);
 });
